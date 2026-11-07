@@ -366,9 +366,11 @@ half4 main(float2 fc) {
             float2 dc = floor(fc / 3.0) + fi * 17.0;
             float dr = hash(dc);
             float twinkle = 0.5 + 0.5 * sin(t * 2.6 + dr * 50.0);
-            col += step(0.93, dr) * exp(-dpx / 46.0) * twinkle * gold * 1.25;
-            col += step(0.985, hash(dc + 3.3)) * twinkle * gold * 0.35;
+            col += step(0.945, dr) * exp(-dpx / 38.0) * twinkle * gold * 1.25;
         }
+        // 零星散落在鳞片上的金粉，很稀，只在角度合适时一闪
+        float2 sc2 = floor(fc / 3.0);
+        col += step(0.994, hash(sc2 + 9.1)) * (0.5 + 0.5 * sin(t * 2.0 + hash(sc2) * 60.0)) * gold * 0.5;
     }
 
     // —— 5b. 边缘辉光 + 暗角 ——
