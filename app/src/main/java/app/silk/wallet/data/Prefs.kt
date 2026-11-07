@@ -16,6 +16,8 @@ private val Context.store by preferencesDataStore("silk_settings")
 data class Settings(
     val theme: String = "system",
     val maskNumbers: Boolean = true,
+    /** 卡面流动、光效与倾斜感应；关掉后卡面静止，更省电 */
+    val motion: Boolean = true,
     val clipboardSeconds: Int = 30,
     val secureScreen: Boolean = false,
     val autoLockSeconds: Int = 60,
@@ -33,6 +35,7 @@ class Prefs(private val context: Context) {
     private object K {
         val theme = stringPreferencesKey("theme")
         val mask = booleanPreferencesKey("mask")
+        val motion = booleanPreferencesKey("motion")
         val clip = intPreferencesKey("clip")
         val secure = booleanPreferencesKey("secure")
         val autoLock = intPreferencesKey("auto_lock")
@@ -48,6 +51,7 @@ class Prefs(private val context: Context) {
         Settings(
             theme = p[K.theme] ?: "system",
             maskNumbers = p[K.mask] ?: true,
+            motion = p[K.motion] ?: true,
             clipboardSeconds = p[K.clip] ?: 30,
             secureScreen = p[K.secure] ?: false,
             autoLockSeconds = p[K.autoLock] ?: 60,
@@ -66,6 +70,7 @@ class Prefs(private val context: Context) {
 
     suspend fun setTheme(v: String) = put(K.theme, v)
     suspend fun setMask(v: Boolean) = put(K.mask, v)
+    suspend fun setMotion(v: Boolean) = put(K.motion, v)
     suspend fun setClipboardSeconds(v: Int) = put(K.clip, v)
     suspend fun setAutoLock(v: Int) = put(K.autoLock, v)
     suspend fun setLockOnScreenOff(v: Boolean) = put(K.screenOff, v)

@@ -90,6 +90,35 @@ Silk 把银行卡号、有效期、CVV 收进一个加密的本地卡包：不�
   </tr>
 </table>
 
+### 五款传说皮肤
+
+每一款都有自己独一份的招牌现象，倾斜手机时光彩各不相同：
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/legend_dragon.webp" width="240" alt="龙鳞"></td>
+    <td align="center" width="33%"><img src="docs/legend_aurora.webp" width="240" alt="北境极光"></td>
+    <td align="center" width="33%"><img src="docs/legend_vortex.webp" width="240" alt="星璇"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>龙鳞</b><br><sub>幻彩鳞片随角度变色，三条金色光带在卡面游动</sub></td>
+    <td align="center"><b>北境极光</b><br><sub>极光在雪峰上空舞动，冰面倒映、裂纹里流光，偶有流星划过</sub></td>
+    <td align="center"><b>星璇</b><br><sub>星系中心是一个黑洞：光环与吸积盘飞转，彗星绕核公转</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/legend_gold.webp" width="240" alt="黑金流沙"></td>
+    <td align="center"><img src="docs/legend_chrome.webp" width="240" alt="液态铬"></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td align="center"><b>黑金流沙</b><br><sub>熔金在金脉里流动，金沙顺着手机倾斜的方向流淌、在低处聚光</sub></td>
+    <td align="center"><b>液态铬</b><br><sub>一面黑镜，水银不时滴落荡开细环，灯带随倾斜滑过</sub></td>
+    <td></td>
+  </tr>
+</table>
+
+不想要动效的话，在「设置 → 外观 → 卡面动效」里关掉，卡面就会静止，更省电。
+
 也可以不用皮肤，直接给卡片导入一张照片或 GIF 当卡面，光泽和边缘效果照样保留。
 
 ## 深色模式

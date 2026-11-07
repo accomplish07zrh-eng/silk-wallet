@@ -13,8 +13,8 @@ android {
         applicationId = "app.silk.wallet"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
     }
 
     // 正式签名从环境变量读取（CI 或本机），缺省时 release 包退回调试签名，方便本地试装

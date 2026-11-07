@@ -156,12 +156,12 @@ object CardStyles {
         CardStylePreset(
             "skin_black_gold", "黑金流沙",
             listOf(Color(0xFF2A2420), Color(0xFF120F0C), Color(0xFF050403)),
-            rarity = Rarity.LEGENDARY, effect = CardEffect.GOLD,
+            rarity = Rarity.LEGENDARY, effect = CardEffect.GOLD, texture = R.drawable.skin_black_gold,
         ),
         CardStylePreset(
             "skin_borealis", "北境极光",
             listOf(Color(0xFF0B2A3A), Color(0xFF07182A), Color(0xFF030812)),
-            rarity = Rarity.LEGENDARY, effect = CardEffect.AURORA,
+            rarity = Rarity.LEGENDARY, effect = CardEffect.AURORA, texture = R.drawable.skin_borealis,
         ),
         CardStylePreset(
             "skin_dragon", "龙鳞",
@@ -171,12 +171,12 @@ object CardStyles {
         CardStylePreset(
             "skin_vortex", "星璇",
             listOf(Color(0xFF1C1440), Color(0xFF0C0824), Color(0xFF03020C)),
-            rarity = Rarity.LEGENDARY, effect = CardEffect.VORTEX,
+            rarity = Rarity.LEGENDARY, effect = CardEffect.VORTEX, texture = R.drawable.skin_vortex,
         ),
         CardStylePreset(
             "skin_chrome", "液态铬",
             listOf(Color(0xFFD8DCE4), Color(0xFF9AA0AC), Color(0xFF4A4F5A)),
-            rarity = Rarity.LEGENDARY, effect = CardEffect.CHROME,
+            rarity = Rarity.LEGENDARY, effect = CardEffect.CHROME, texture = R.drawable.skin_chrome,
         ),
     )
 

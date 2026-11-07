@@ -1,5 +1,9 @@
 package app.silk.wallet
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import app.silk.wallet.ui.fx.LocalMotionEnabled
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.view.WindowManager
@@ -56,7 +60,10 @@ class MainActivity : AppCompatActivity() {
                     else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
                     enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                 }
-                CompositionLocalProvider(LocalTilt provides rememberTilt()) {
+                CompositionLocalProvider(
+                    LocalMotionEnabled provides settings.motion,
+                    LocalTilt provides if (settings.motion) rememberTilt() else remember { mutableStateOf(Offset.Zero) },
+                ) {
                     AppRoot(app, settings)
                 }
             }

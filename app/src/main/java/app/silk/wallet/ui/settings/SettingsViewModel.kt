@@ -46,6 +46,7 @@ class SettingsViewModel(private val app: SilkApp) : ViewModel() {
 
     fun setTheme(v: String) = viewModelScope.launch { prefs.setTheme(v) }
     fun setMask(v: Boolean) = viewModelScope.launch { prefs.setMask(v) }
+    fun setMotion(v: Boolean) = viewModelScope.launch { prefs.setMotion(v) }
     fun setClipboard(v: Int) = viewModelScope.launch { prefs.setClipboardSeconds(v) }
     fun setSecure(v: Boolean) = viewModelScope.launch { prefs.setSecureScreen(v) }
     fun setAutoLock(v: Int) = viewModelScope.launch { prefs.setAutoLock(v) }

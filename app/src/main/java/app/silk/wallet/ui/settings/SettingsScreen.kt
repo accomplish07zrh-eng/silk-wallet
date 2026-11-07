@@ -1,5 +1,6 @@
 package app.silk.wallet.ui.settings
 
+import androidx.compose.material.icons.outlined.AutoAwesome
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -220,6 +221,10 @@ fun SettingsScreen(app: SilkApp, vm: SettingsViewModel, settings: Settings, onBa
             }
 
             Section("外观", 4) {
+                Item(Icons.Outlined.AutoAwesome, "卡面动效", "流动光泽、皮肤特效与倾斜感应；关闭后卡面静止，更省电") {
+                    SilkSwitch(settings.motion, onCheckedChange = vm::setMotion)
+                }
+                Divider()
                 Choice(Icons.Outlined.Palette, "主题", null, listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色"), settings.theme, onSelect = vm::setTheme)
             }
 

@@ -72,14 +72,14 @@ object DebugShots {
             app.cards.all().forEach { app.cards.delete(it) }
             // 与真实抽到时一致：传说留 1 天、史诗留 3 天（这里各少一点，显示成刚抽到不久）
             val now0 = System.currentTimeMillis()
-            listOf("skin_black_gold", "skin_borealis").forEach { SkinStore.grant(a, it, now0 + DAY - 40 * 60_000L) }
+            listOf("skin_black_gold", "skin_borealis", "skin_dragon", "skin_vortex", "skin_chrome").forEach { SkinStore.grant(a, it, now0 + DAY - 40 * 60_000L) }
             listOf("skin_galaxy", "skin_lava", "skin_sakura").forEach { SkinStore.grant(a, it, now0 + 3 * DAY - 2 * 3_600_000L) }
             val demo = listOf(
-                Demo("LIN QING", "622202", 11, 26, "debit", null, "工资卡"),
-                Demo("SU WAN", "436742", 3, 28, "credit", null, ""),
-                Demo("CHEN YU", "378282", 9, 29, "credit", "gold", "", "美国运通"),
-                Demo("LIN QING", "621661", 5, 31, "debit", "skin_galaxy", ""),
-                Demo("SU WAN", "552033", 7, 30, "credit", "skin_borealis", "旅行用", "汇丰银行"),
+                Demo("LIN QING", "622202", 11, 26, "debit", "skin_borealis", "工资卡"),
+                Demo("SU WAN", "436742", 3, 28, "credit", "skin_vortex", ""),
+                Demo("CHEN YU", "378282", 9, 29, "credit", "skin_chrome", "", "美国运通"),
+                Demo("LIN QING", "621661", 5, 31, "debit", "skin_black_gold", ""),
+                Demo("SU WAN", "552033", 7, 30, "credit", "skin_dragon", "旅行用", "汇丰银行"),
                 Demo("LIN QING", "622588", 12, 29, "credit", "skin_black_gold", "日常消费"),
             )
             demo.forEachIndexed { n, d ->
