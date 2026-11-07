@@ -1,5 +1,10 @@
 package app.silk.wallet.ui.home
 
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.geometry.Rect
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -112,6 +117,8 @@ fun HomeScreen(
     var query by rememberSaveable { mutableStateOf(vm.query.value) }
     var searching by rememberSaveable { mutableStateOf(query.isNotEmpty()) }
     var detail by remember { mutableStateOf<Card?>(null) }
+    var detailFrom by remember { mutableStateOf<Rect?>(null) }
+    val haptics = LocalHapticFeedback.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val haze = remember { HazeState() }
@@ -196,7 +203,12 @@ fun HomeScreen(
                             masked = settings.maskNumbers,
                             noticeDays = state.noticeDays,
                             play = play,
-                            onOpen = { detail = it },
+                            hiddenId = detail?.id,
+                            onOpen = { card, from ->
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                detailFrom = from
+                                detail = card
+                            },
                             onEdit = { onEdit(it.id) },
                             onArchive = ::toggleArchive,
                             onDelete = ::deleteWithUndo,
@@ -216,7 +228,10 @@ fun HomeScreen(
                 selected = filter,
                 expiringCount = state.expiring,
                 archivedCount = state.archived,
-                onSelect = { vm.filter.value = it },
+                onSelect = {
+                    if (it != filter) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    vm.filter.value = it
+                },
                 onAdd = onAdd,
                 sortMode = state.sort,
                 onSortSelect = vm::setSort,
@@ -246,27 +261,23 @@ fun HomeScreen(
                 )
             }
 
-            AnimatedVisibility(
-                visible = detail != null,
-                enter = fadeIn(tween(200)) + scaleIn(spring(dampingRatio = 0.8f, stiffness = 320f), initialScale = 0.9f),
-                exit = fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.95f),
-            ) {
+            // 详情：卡片从堆叠里的位置飞出、放大到位；关闭时原路飞回，落地后才把堆叠里那张显示出来
+            detail?.let { d ->
                 // 详情里的卡始终取最新版本（换样式、编辑后即时刷新）
-                val live = detail?.let { d -> state.cards.firstOrNull { it.id == d.id } ?: d }
-                if (live != null) {
-                    CardDetail(
-                        app = app,
-                        card = live,
-                        settings = settings,
-                        haze = haze,
-                        onStyle = { vm.setStyle(live, it) },
-                        onEdit = {
-                            detail = null
-                            onEdit(live.id)
-                        },
-                        onDismiss = { detail = null },
-                    )
-                }
+                val live = state.cards.firstOrNull { it.id == d.id } ?: d
+                CardDetail(
+                    app = app,
+                    card = live,
+                    settings = settings,
+                    haze = haze,
+                    from = detailFrom,
+                    onStyle = { vm.setStyle(live, it) },
+                    onEdit = {
+                        detail = null
+                        onEdit(live.id)
+                    },
+                    onClosed = { detail = null },
+                )
             }
         }
     }
@@ -292,15 +303,26 @@ private fun Header(subtitle: String, play: Boolean, onDraw: () -> Unit, onSearch
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.enterRise(0, play),
             )
-            Text(
-                subtitle,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            // 数字变化时副标题上下翻动，而不是瞬间跳字
+            AnimatedContent(
+                targetState = subtitle,
+                transitionSpec = {
+                    val up = spring<IntOffset>(dampingRatio = 0.8f, stiffness = 420f)
+                    (slideInVertically(up) { it / 2 } + fadeIn(tween(180))) togetherWith
+                        (slideOutVertically(up) { -it / 2 } + fadeOut(tween(120)))
+                },
                 modifier = Modifier.enterRise(1, play),
-            )
+                label = "subtitle",
+            ) { text ->
+                Text(
+                    text,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         GlassCircleButton(Icons.Rounded.AutoAwesome, "抽卡", onDraw, Modifier.enterRise(1, play))
         Spacer(Modifier.width(10.dp))

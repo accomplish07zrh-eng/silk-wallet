@@ -36,6 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -91,6 +94,7 @@ private fun Modifier.cardSurface(card: Card, style: CardStylePreset, back: Boole
     val colors = if (back) style.colors.reversed() else style.colors
     return this
         .clip(CardShape)
+        .laminate(tilt, light)
         .then(
             when {
                 photo != null -> Modifier.flowingGradient(colors, false, clock, tilt, photo = photo).photoScrim(back)
@@ -129,6 +133,31 @@ private fun Modifier.gloss(light: Boolean) = drawBehind {
     drawRect(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = if (light) 0.05f else 0.16f)))
 }
 
+/**
+ * 覆膜反光：一条斜向柔光带压在整张卡（连同文字、芯片）之上，随手机倾斜滑过卡面，
+ * 像实体卡表面的覆膜在灯下反光；静止时停在左上角，只留一抹。
+ */
+private fun Modifier.laminate(tilt: State<Offset>, light: Boolean) = drawWithContent {
+    drawContent()
+    val t = tilt.value
+    val w = size.width
+    val s = 0.2f + t.x * 0.85f - t.y * 0.45f
+    val p = Offset(w * s, size.height * 0.5f)
+    val dir = Offset(0.876f, 0.482f) * (w * 0.36f)
+    val a = if (light) 0.26f else 0.15f
+    drawRect(
+        Brush.linearGradient(
+            0f to Color.Transparent,
+            0.38f to Color.White.copy(alpha = a * 0.25f),
+            0.5f to Color.White.copy(alpha = a),
+            0.62f to Color.White.copy(alpha = a * 0.25f),
+            1f to Color.Transparent,
+            start = p - dir,
+            end = p + dir,
+        )
+    )
+}
+
 /** 照片上的暗化层：上下两端加深托住白字，背面整体再暗一些 */
 private fun Modifier.photoScrim(back: Boolean) = drawBehind {
     drawRect(Color.Black.copy(alpha = if (back) 0.3f else 0.16f))
@@ -154,11 +183,20 @@ private fun Modifier.gifLayer(gif: Drawable, clock: State<Float>?) = drawBehind 
     drawIntoCanvas { gif.draw(it.nativeCanvas) }
 }
 
-/** 凸印字：深色卡面投暗影，浅色卡面提亮边 */
-private fun emboss(ink: Color) = TextStyle(
-    shadow = if (ink == Color.White) Shadow(Color.Black.copy(alpha = 0.38f), Offset(0f, 2f), 3f)
-    else Shadow(Color.White.copy(alpha = 0.7f), Offset(0f, 1.5f), 1.5f)
+/** 银箔：上亮、中线一道冷灰折痕、下沿回亮，像烫印的金属字 */
+private val SilverFoil = Brush.verticalGradient(
+    0f to Color.White,
+    0.46f to Color(0xFFF3F5F9),
+    0.56f to Color(0xFFC9CFDA),
+    1f to Color(0xFFF4F6FA),
 )
+
+/** 凸印字：深色卡面用银箔 + 下投暗影，浅色卡面用深墨 + 下沿提亮 */
+private fun emboss(ink: Color) = if (ink == Color.White) {
+    TextStyle(brush = SilverFoil, shadow = Shadow(Color.Black.copy(alpha = 0.4f), Offset(0f, 2f), 3f))
+} else {
+    TextStyle(color = ink, shadow = Shadow(Color.White.copy(alpha = 0.7f), Offset(0f, 1.5f), 1.5f))
+}
 
 @Composable
 fun CardFront(
@@ -177,7 +215,6 @@ fun CardFront(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     card.bank.ifBlank { "银行卡" },
-                    color = ink,
                     style = emboss(ink),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -226,7 +263,6 @@ fun CardFront(
                     Text("持卡人", color = ink.copy(alpha = 0.55f), fontSize = 9.sp, letterSpacing = 1.5.sp)
                     Text(
                         card.holder.uppercase().ifBlank { "CARDHOLDER" },
-                        color = ink,
                         style = emboss(ink),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
@@ -239,7 +275,6 @@ fun CardFront(
                     Text("VALID THRU", color = ink.copy(alpha = 0.55f), fontSize = 8.sp, letterSpacing = 1.8.sp)
                     Text(
                         if (masked) "••/••" else CardMath.expiryText(card.expMonth, card.expYear),
-                        color = ink,
                         style = emboss(ink),
                         fontSize = 14.sp,
                         fontFamily = FontFamily.Monospace,
@@ -317,8 +352,10 @@ fun FlipCard(
     flipped: Boolean,
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
+    live: Boolean = true,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val haptics = LocalHapticFeedback.current
     val angle by animateFloatAsState(
         if (flipped) 180f else 0f,
         animationSpec = spring(dampingRatio = 0.72f, stiffness = 180f),
@@ -330,12 +367,15 @@ fun FlipCard(
                 rotationY = angle
                 cameraDistance = 16f * density
             }
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onTap)
+            .clickable(remember { MutableInteractionSource() }, indication = null) {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onTap()
+            }
     ) {
         if (angle <= 90f) {
-            CardFront(card, style, masked, Modifier.fillMaxSize(), live = true, trailing = trailing)
+            CardFront(card, style, masked, Modifier.fillMaxSize(), live = live, trailing = trailing)
         } else {
-            CardBack(card, style, masked, Modifier.fillMaxSize().graphicsLayer { rotationY = 180f }, live = true, trailing = trailing)
+            CardBack(card, style, masked, Modifier.fillMaxSize().graphicsLayer { rotationY = 180f }, live = live, trailing = trailing)
         }
     }
 }
@@ -354,7 +394,6 @@ private fun FittedNumber(text: String, ink: Color) {
         }
         Text(
             text,
-            color = ink,
             style = emboss(ink),
             fontSize = chosen.sp,
             fontFamily = FontFamily.Monospace,

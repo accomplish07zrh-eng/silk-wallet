@@ -1,5 +1,22 @@
 package app.silk.wallet.ui.home
 
+import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.util.lerp
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Rect
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -91,9 +108,10 @@ fun CardDetail(
     card: Card,
     settings: Settings,
     haze: HazeState,
+    from: Rect?,
     onStyle: (String?) -> Unit,
     onEdit: () -> Unit,
-    onDismiss: () -> Unit,
+    onClosed: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -101,7 +119,33 @@ fun CardDetail(
     var revealed by remember(card.id) { mutableStateOf(false) }
     val brand = CardBrand.of(card.brand)
     val style = CardStyles.resolve(card.styleId, card.bankCode, brand)
+
+    // 0 = 卡还在堆叠里的原位，1 = 详情就位；弹簧略微过冲，正好是“放上来”的那一下
+    val progress = remember(card.id) { Animatable(0f) }
+    var target by remember(card.id) { mutableStateOf<Rect?>(null) }
+    var closing by remember(card.id) { mutableStateOf(false) }
+    val measured = target != null
+    LaunchedEffect(measured) {
+        if (measured && !closing) progress.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 240f))
+    }
+    val onDismiss: () -> Unit = {
+        if (!closing) {
+            closing = true
+            flipped = false
+            scope.launch {
+                progress.animateTo(0f, spring(dampingRatio = 1f, stiffness = 340f))
+                onClosed()
+            }
+        }
+    }
     BackHandler(onBack = onDismiss)
+
+    /** 次要内容跟在卡后面依次浮现：[lag] 越大出场越晚、退场越早 */
+    fun Modifier.follow(lag: Float) = graphicsLayer {
+        val q = ((progress.value - lag) / (1f - lag)).coerceIn(0f, 1f)
+        alpha = q
+        translationY = (1f - q) * 36.dp.toPx()
+    }
 
     fun copy(label: String, value: String) = app.clipboard.copy(context, label, value, settings.clipboardSeconds)
 
@@ -114,9 +158,11 @@ fun CardDetail(
     val hasImage = remember(card.id, mediaVersion) { CardMedia.has(context, card.id) }
 
     val dismissTap = remember { MutableInteractionSource() }
+    Box(Modifier.fillMaxSize()) {
     Box(
         Modifier
             .fillMaxSize()
+            .graphicsLayer { alpha = progress.value.coerceIn(0f, 1f) }
             .hazeChild(
                 haze,
                 HazeStyle(
@@ -128,7 +174,8 @@ fun CardDetail(
                 ),
             )
             .clickable(dismissTap, indication = null, onClick = onDismiss)
-    ) {
+    )
+    run {
         Column(
             Modifier
                 .fillMaxSize()
@@ -150,8 +197,33 @@ fun CardDetail(
                     masked = !revealed,
                     flipped = flipped,
                     onTap = { flipped = !flipped },
+                    live = false,
                     trailing = { RevealToggle(!revealed) { revealed = !revealed } },
                     modifier = Modifier
+                        .onGloballyPositioned { target = it.boundsInRoot() }
+                        .graphicsLayer {
+                            // 从堆叠位置飞到详情位置：只做位移与等比缩放，卡面内容全程同一份
+                            val t = target
+                            val o = from
+                            val p = progress.value
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            when {
+                                t == null || t.width <= 0f -> alpha = 0f
+                                o == null || o.width <= 0f -> {
+                                    alpha = p.coerceIn(0f, 1f)
+                                    val sc = 0.9f + 0.1f * p
+                                    scaleX = sc
+                                    scaleY = sc
+                                }
+                                else -> {
+                                    val sc = lerp(o.width / t.width, 1f, p)
+                                    scaleX = sc
+                                    scaleY = sc
+                                    translationX = lerp(o.left - t.left, 0f, p)
+                                    translationY = lerp(o.top - t.top, 0f, p)
+                                }
+                            }
+                        }
                         .graphicsLayer {
                             val d = drag.value
                             rotationY = (d.x * 0.075f).coerceIn(-22f, 22f)
@@ -178,10 +250,10 @@ fun CardDetail(
                 )
             }
             Spacer(Modifier.height(10.dp))
-            Text("点按翻面看 CVV · 按住拖动看光泽", color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp)
+            Text("点按翻面看 CVV · 按住拖动看光泽", color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp, modifier = Modifier.follow(0.35f))
             Spacer(Modifier.height(20.dp))
 
-            Column(Modifier.fillMaxWidth().clickable(remember { MutableInteractionSource() }, indication = null) {}) {
+            Column(Modifier.fillMaxWidth().follow(0.42f).clickable(remember { MutableInteractionSource() }, indication = null) {}) {
                 Text(
                     "卡面样式",
                     color = Color.White.copy(alpha = 0.75f),
@@ -209,6 +281,7 @@ fun CardDetail(
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .follow(0.5f)
                     .clip(RoundedCornerShape(26.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .clickable(remember { MutableInteractionSource() }, indication = null) {}
@@ -238,6 +311,7 @@ fun CardDetail(
             Spacer(Modifier.height(18.dp))
             Row(
                 Modifier
+                    .follow(0.58f)
                     .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.14f))
                     .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
@@ -255,6 +329,12 @@ fun CardDetail(
                 .align(Alignment.TopEnd)
                 .statusBarsPadding()
                 .padding(top = 8.dp, end = 20.dp)
+                .graphicsLayer {
+                    val q = progress.value.coerceIn(0f, 1f)
+                    alpha = q
+                    scaleX = 0.6f + 0.4f * q
+                    scaleY = 0.6f + 0.4f * q
+                }
                 .size(42.dp)
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.16f))
@@ -264,6 +344,7 @@ fun CardDetail(
         ) {
             Icon(Icons.Rounded.Close, "关闭", tint = Color.White, modifier = Modifier.size(20.dp))
         }
+    }
     }
 }
 
@@ -275,10 +356,22 @@ private fun Line() = HorizontalDivider(
 
 @Composable
 private fun InfoRow(label: String, value: String, mono: Boolean = false, copyable: Boolean = true, onCopy: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1400)
+            copied = false
+        }
+    }
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(enabled = copyable, onClick = onCopy)
+            .clickable(enabled = copyable) {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onCopy()
+                copied = true
+            }
             .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -294,7 +387,17 @@ private fun InfoRow(label: String, value: String, mono: Boolean = false, copyabl
             modifier = Modifier.weight(1f),
         )
         if (copyable) {
-            Icon(Icons.Rounded.ContentCopy, "复制$label", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+            AnimatedContent(
+                targetState = copied,
+                transitionSpec = {
+                    (scaleIn(spring(dampingRatio = 0.5f, stiffness = 600f), initialScale = 0.4f) + fadeIn(tween(120))) togetherWith
+                        (scaleOut(tween(120), targetScale = 0.4f) + fadeOut(tween(100)))
+                },
+                label = "copied",
+            ) { done ->
+                if (done) Icon(Icons.Rounded.Check, "已复制", tint = Color(0xFF34C759), modifier = Modifier.size(18.dp))
+                else Icon(Icons.Rounded.ContentCopy, "复制$label", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+            }
         }
     }
 }

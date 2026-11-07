@@ -1,5 +1,10 @@
 package app.silk.wallet.ui.theme
 
+import app.silk.wallet.ui.fx.LocalTilt
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.runtime.State
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
@@ -85,11 +90,7 @@ fun glassStyle(): HazeStyle {
 @Composable
 fun Modifier.glassSurface(hazeState: HazeState?, shape: Shape, elevated: Boolean = true): Modifier {
     val dark = LocalDarkTheme.current
-    val rim = if (dark) {
-        Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.05f)))
-    } else {
-        Brush.verticalGradient(listOf(Color.White, Color.White.copy(alpha = 0.3f)))
-    }
+    val tilt = LocalTilt.current
     val hairline = if (dark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.07f)
     val fallback = if (dark) Color(0xFF1C1C22).copy(alpha = 0.92f) else Color.White
     return this
@@ -103,8 +104,43 @@ fun Modifier.glassSurface(hazeState: HazeState?, shape: Shape, elevated: Boolean
         )
         .clip(shape)
         .then(if (hazeState != null) Modifier.hazeChild(hazeState, glassStyle()) else Modifier.background(fallback))
-        .border(2.dp, rim, shape)
+        .liquidRim(shape, tilt, dark)
         .border(1.dp, hairline, shape)
+}
+
+/**
+ * 液态玻璃的边：光从左上打来，左上与右下两个对角各亮起一段高光（入射与折射），
+ * 两侧收暗；高光角度随手机倾斜缓缓转动。顶部再垫一层很淡的内光，让玻璃有厚度。
+ */
+private fun Modifier.liquidRim(shape: Shape, tilt: State<Offset>, dark: Boolean) = drawWithContent {
+    drawContent()
+    val outline = shape.createOutline(size, layoutDirection, this)
+    val t = tilt.value
+    val c = Offset(size.width / 2f, size.height / 2f)
+    var dx = -0.72f + t.x * 0.55f
+    var dy = -0.72f + t.y * 0.55f
+    val len = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(0.001f)
+    dx /= len
+    dy /= len
+    val r = maxOf(size.width, size.height) / 2f
+    val hi = if (dark) 0.5f else 1f
+    val lo = if (dark) 0.05f else 0.28f
+    val back = if (dark) 0.24f else 0.75f
+    val rim = Brush.linearGradient(
+        0f to Color.White.copy(alpha = hi),
+        0.3f to Color.White.copy(alpha = lo),
+        0.7f to Color.White.copy(alpha = lo),
+        1f to Color.White.copy(alpha = back),
+        start = Offset(c.x + dx * r, c.y + dy * r),
+        end = Offset(c.x - dx * r, c.y - dy * r),
+    )
+    drawRect(
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = if (dark) 0.07f else 0.35f),
+            0.45f to Color.Transparent,
+        )
+    )
+    drawOutline(outline, rim, style = Stroke(width = 3.dp.toPx()))
 }
 
 /**

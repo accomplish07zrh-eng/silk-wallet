@@ -1,5 +1,6 @@
 package app.silk.wallet.ui.home
 
+import app.silk.wallet.ui.fx.LocalTilt
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -162,6 +163,8 @@ fun LiquidDock(
     val rimBottom = if (dark) Color.White.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.35f)
     val hairline = if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.10f)
     val rippleColor = MaterialTheme.colorScheme.onSurface
+    val glint = if (dark) Color.White.copy(alpha = 0.55f) else Color(0xFFDDE6F5)
+    val tilt = LocalTilt.current
 
     BoxWithConstraints(
         modifier
@@ -213,6 +216,20 @@ fun LiquidDock(
                         path,
                         Brush.verticalGradient(listOf(rimTop, rimBottom)),
                         style = Stroke(width = 3.dp.toPx()),
+                    )
+                    // 沿边游走的一点高光：随手机左右倾斜在玻璃边上滑动，像光在液面上走
+                    val gx = size.width * (0.3f + tilt.value.x * 0.35f)
+                    val gw = size.width * 0.22f
+                    drawPath(
+                        path,
+                        Brush.horizontalGradient(
+                            0f to Color.Transparent,
+                            0.5f to glint,
+                            1f to Color.Transparent,
+                            startX = gx - gw,
+                            endX = gx + gw,
+                        ),
+                        style = Stroke(width = 3.5.dp.toPx()),
                     )
                     // 透镜涟漪：从选中项中心扩散的一圈细环
                     val rp = ripple.value

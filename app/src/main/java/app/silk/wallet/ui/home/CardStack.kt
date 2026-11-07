@@ -1,5 +1,8 @@
 package app.silk.wallet.ui.home
 
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateDpAsState
@@ -119,7 +122,8 @@ fun CardStack(
     masked: Boolean,
     noticeDays: Int,
     play: Boolean,
-    onOpen: (Card) -> Unit,
+    hiddenId: Long?,
+    onOpen: (Card, Rect) -> Unit,
     onEdit: (Card) -> Unit,
     onArchive: (Card) -> Unit,
     onDelete: (Card) -> Unit,
@@ -261,6 +265,8 @@ fun CardStack(
             }
             val exposed by remember(swipe) { derivedStateOf { swipe.offset < -0.5f } }
             val press = remember(card.id) { MutableInteractionSource() }
+            // 卡片在屏幕上的位置：点开详情时从这里飞出去，关闭时飞回来
+            val bounds = remember(card.id) { arrayOf(Rect.Zero) }
 
             androidx.compose.runtime.CompositionLocalProvider(LocalViewConfiguration provides cardConfig) {
                 Box(
@@ -339,6 +345,9 @@ fun CardStack(
                     Box(
                         Modifier
                             .offset { IntOffset(swipe.offset.roundToInt(), 0) }
+                            .onGloballyPositioned { bounds[0] = it.boundsInRoot() }
+                            // 正在详情里展示的那张先藏起来，看起来就是同一张卡被拿了出去
+                            .graphicsLayer { alpha = if (hiddenId == card.id) 0f else 1f }
                             .pressScale(press, 0.97f)
                             .shadow(elevation, CardShape, ambientColor = style.colors.last(), spotColor = style.colors.last())
                             .anchoredDraggable(swipe, Orientation.Horizontal, enabled = dragId == null)
@@ -346,7 +355,7 @@ fun CardStack(
                                 if (openId != null || exposed) {
                                     openId = null
                                     scope.launch { swipe.animateTo(Swipe.Closed) }
-                                } else onOpen(card)
+                                } else onOpen(card, bounds[0])
                             }
                             .semantics {
                                 customActions = listOf(
