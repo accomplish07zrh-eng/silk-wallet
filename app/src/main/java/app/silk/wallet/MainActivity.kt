@@ -34,6 +34,7 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         nfc = NfcAdapter.getDefaultAdapter(this)
+        DebugShots.install(this)
         // 防截屏必须在首帧前生效：DataStore 是异步的，这里读同步镜像
         if (Prefs.secureScreenNow(this)) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 

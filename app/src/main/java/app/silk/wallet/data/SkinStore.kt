@@ -60,6 +60,12 @@ object SkinStore {
         publish(map)
     }
 
+    /** 直接授予某款皮肤到指定时间（调试包的演示数据用） */
+    fun grant(context: Context, id: String, expiresAt: Long) {
+        ensureLoaded(context)
+        save(context, _expiries.value + (id to expiresAt))
+    }
+
     fun isActive(id: String, now: Long = System.currentTimeMillis()) = (_expiries.value[id] ?: 0L) > now
 
     private fun today() = LocalDate.now().toEpochDay()

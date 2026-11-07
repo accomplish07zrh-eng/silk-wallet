@@ -62,6 +62,13 @@ float3 ramp(float x) {
     return x < 0.5 ? mix(a, b, x * 2.0) : mix(b, c, x * 2.0 - 1.0);
 }
 
+// 绕灰轴旋转色相：保持明暗，只让颜色随角度流转
+float3 hueShift(float3 c, float a) {
+    float3 k = float3(0.57735);
+    float ca = cos(a);
+    return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);
+}
+
 float2 warp(float2 p, float t) {
     float2 q = p;
     q += 0.20 * float2(sin(q.y * 2.3 + t * 0.21 + uTilt.x * 0.9), cos(q.x * 1.9 - t * 0.17 + uTilt.y * 0.9));
@@ -326,6 +333,42 @@ half4 main(float2 fc) {
         env += exp(-abs(ry) * 36.0) * 0.7;
         col = env * mix(float3(1.0), min(float3(uC0.rgb) * 1.3 + 0.2, float3(1.2)), 0.18);
         col += pow(ndh, 140.0) * 0.9;
+    } else if (m == 13) {
+        // 龙鳞 · 流金：贴图鳞片随倾斜视差 + 色相流转；鳞缘被一道斜光扫过；
+        // 其上三条金色光带缓慢游动，光带周围飘着闪烁的星尘
+        float2 tuv = clamp(uv * 0.94 + 0.03 + uTilt * 0.018 + N.xy * 0.006, 0.0, 1.0);
+        float3 tex = float3(uPhoto.eval(tuv * uPhotoSize).rgb);
+        float lum = dot(tex, float3(0.299, 0.587, 0.114));
+        float hueA = uTilt.x * 1.3 - uTilt.y * 0.8 + sin(t * 0.13) * 0.35;
+        col = hueShift(tex, hueA) * (0.78 + 0.26 * diffuse) * 0.98;
+        // 鳞缘（贴图里最亮的细线）被扫光点亮
+        float rim = smoothstep(0.28, 0.62, lum);
+        float sweep = fract(t * 0.07) * 1.8 - 0.4 + uTilt.x * 0.35;
+        float band = exp(-pow((diag - sweep) * 4.0, 2.0));
+        col += rim * band * float3(1.0, 0.86, 0.52) * 0.9;
+        col += rim * spec * 0.6;
+        // 金色光带
+        float3 gold = float3(1.0, 0.80, 0.40);
+        for (int i = 0; i < 3; i++) {
+            float fi = float(i);
+            float x = uv.x * aspect;
+            float yi = 0.5 + (fi - 1.0) * 0.27
+                + 0.17 * sin(x * 1.7 + t * 0.32 + fi * 2.1)
+                + 0.07 * sin(x * 4.1 - t * 0.21 + fi * 1.3);
+            float dpx = abs(uv.y - yi) * uSize.y;
+            float core = exp(-pow(dpx / 2.0, 2.0));
+            float glow = exp(-dpx / 14.0) * 0.42 + exp(-dpx / 48.0) * 0.20 + exp(-dpx / 120.0) * 0.08;
+            float3 tint = 0.5 + 0.5 * cos(6.2831 * (uv.x * 0.55 + fi * 0.31 + t * 0.025 + float3(0.0, 0.12, 0.24)));
+            float3 rc = mix(gold, tint, 0.42);
+            // 光带亮度沿自身起伏，像有光在里面流动
+            float pulse = 0.65 + 0.35 * sin(x * 3.0 - t * 1.1 + fi * 1.7);
+            col += rc * (core * 1.6 + glow) * pulse;
+            float2 dc = floor(fc / 3.0) + fi * 17.0;
+            float dr = hash(dc);
+            float twinkle = 0.5 + 0.5 * sin(t * 2.6 + dr * 50.0);
+            col += step(0.93, dr) * exp(-dpx / 46.0) * twinkle * gold * 1.25;
+            col += step(0.985, hash(dc + 3.3)) * twinkle * gold * 0.35;
+        }
     }
 
     // —— 5b. 边缘辉光 + 暗角 ——

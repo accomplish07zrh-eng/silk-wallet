@@ -1,5 +1,10 @@
 package app.silk.wallet.ui.card
 
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import android.graphics.BitmapFactory
+import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -91,6 +96,7 @@ private fun Modifier.cardSurface(card: Card, style: CardStylePreset, back: Boole
     val clock = if (live) rememberFlowClock() else LocalFlowClock.current
     val tilt = LocalTilt.current
     val light = style.darkText && photo == null && gif == null
+    val texture = if (photo == null && gif == null) style.texture?.let { rememberTexture(it) } else null
     val colors = if (back) style.colors.reversed() else style.colors
     return this
         .clip(CardShape)
@@ -99,11 +105,30 @@ private fun Modifier.cardSurface(card: Card, style: CardStylePreset, back: Boole
             when {
                 photo != null -> Modifier.flowingGradient(colors, false, clock, tilt, photo = photo).photoScrim(back)
                 gif != null -> Modifier.gifLayer(gif, clock).photoScrim(back)
-                else -> Modifier.flowingGradient(colors, style.darkText, clock, tilt, style.effect, tier = style.rarity.ordinal)
+                else -> Modifier.flowingGradient(colors, style.darkText, clock, tilt, style.effect, photo = texture, tier = style.rarity.ordinal)
             }
         )
         .gloss(light)
         .border(1.dp, edgeBrush(light), CardShape)
+}
+
+/** 皮肤贴图：解码一次后全局缓存，长边压到 1280px 以内 */
+private object TextureCache {
+    private val map = HashMap<Int, ImageBitmap>()
+    fun get(res: android.content.res.Resources, id: Int): ImageBitmap = synchronized(map) {
+        map.getOrPut(id) {
+            val src = BitmapFactory.decodeResource(res, id, BitmapFactory.Options().apply { inScaled = false })
+            val k = 1280f / maxOf(src.width, src.height)
+            val bmp = if (k < 1f) Bitmap.createScaledBitmap(src, (src.width * k).toInt(), (src.height * k).toInt(), true) else src
+            bmp.asImageBitmap()
+        }
+    }
+}
+
+@Composable
+private fun rememberTexture(id: Int): ImageBitmap {
+    val res = LocalContext.current.resources
+    return remember(id) { TextureCache.get(res, id) }
 }
 
 /** 有照片 / 动图时文字一律白色 */

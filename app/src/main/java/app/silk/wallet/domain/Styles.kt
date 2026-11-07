@@ -1,5 +1,6 @@
 package app.silk.wallet.domain
 
+import app.silk.wallet.R
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -17,6 +18,8 @@ data class CardStylePreset(
     val rarity: Rarity = Rarity.COMMON,
     /** 着色器特效编号，见 FlowShader 的 uMode */
     val effect: Int = CardEffect.NONE,
+    /** 贴图底（drawable 资源）：着色器在贴图之上叠光效，用于手绘 / 生成底图的皮肤 */
+    val texture: Int? = null,
 )
 
 /**
@@ -56,6 +59,8 @@ object CardEffect {
     const val SCALES = 10
     const val VORTEX = 11
     const val CHROME = 12
+    /** 贴图鳞片 + 随倾斜流转的虹彩 + 鳞缘扫光 + 游动的金色光带与星尘 */
+    const val DRAGON_SILK = 13
 }
 
 object CardStyles {
@@ -160,8 +165,8 @@ object CardStyles {
         ),
         CardStylePreset(
             "skin_dragon", "龙鳞",
-            listOf(Color(0xFF6A1410), Color(0xFF3A0907), Color(0xFF160302)),
-            rarity = Rarity.LEGENDARY, effect = CardEffect.SCALES,
+            listOf(Color(0xFF2BB59A), Color(0xFF3B2A8C), Color(0xFF0A0C1A)),
+            rarity = Rarity.LEGENDARY, effect = CardEffect.DRAGON_SILK, texture = R.drawable.skin_dragon,
         ),
         CardStylePreset(
             "skin_vortex", "星璇",

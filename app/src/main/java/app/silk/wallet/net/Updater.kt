@@ -17,7 +17,7 @@ import java.io.File
  */
 object Updater {
 
-    const val REPO = "accomplish07zrh-eng/silk"
+    const val REPO = "accomplish07zrh-eng/silk-wallet"
 
     data class Release(val version: String, val notes: String, val apkUrl: String, val apkName: String)
 
