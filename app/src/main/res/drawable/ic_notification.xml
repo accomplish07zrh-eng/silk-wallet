@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知小图标：一张倾斜叠放的卡片轮廓（单色） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4,7.5C4,6.67 4.67,6 5.5,6h13c0.83,0 1.5,0.67 1.5,1.5v9c0,0.83 -0.67,1.5 -1.5,1.5h-13C4.67,18 4,17.33 4,16.5zM6,9v1.6h12V9zM6,14.2v1.3h4.5v-1.3z" />
+</vector>
