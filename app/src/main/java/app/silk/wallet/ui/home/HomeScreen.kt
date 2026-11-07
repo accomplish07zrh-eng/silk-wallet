@@ -412,7 +412,7 @@ private fun EmptyState(filter: CardFilter, query: String, noticeDays: Int, onAdd
             }
             Spacer(Modifier.height(12.dp))
             Text(
-                "也可以把实体卡贴在手机背面，通过 NFC 自动读取卡号",
+                "也可以把实体卡贴在手机背面\n通过 NFC 自动读取卡号",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

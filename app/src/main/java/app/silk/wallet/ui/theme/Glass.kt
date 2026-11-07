@@ -1,5 +1,9 @@
 package app.silk.wallet.ui.theme
 
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.animation.core.animateFloatAsState
@@ -178,9 +182,20 @@ fun LargeTitleBar(
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    val bg = MaterialTheme.colorScheme.background
     Column(
         modifier
+            .zIndex(1f)
             .fillMaxWidth()
+            // 标题栏下沿一段渐隐：滚动内容从标题下滑过时柔和消失，而不是被一刀切断
+            .drawBehind {
+                val fade = 22.dp.toPx()
+                drawRect(
+                    Brush.verticalGradient(listOf(bg, bg.copy(alpha = 0f)), startY = size.height, endY = size.height + fade),
+                    topLeft = Offset(0f, size.height),
+                    size = Size(size.width, fade),
+                )
+            }
             .statusBarsPadding()
             .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp)
     ) {
