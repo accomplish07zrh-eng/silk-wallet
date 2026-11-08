@@ -369,11 +369,14 @@ private fun DockCircle(
             .size(with(density) { (r * 2f).toDp() })
             .pressScale(interaction, 0.88f)
             .clip(CircleShape)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                enabled = merge < 0.4f,
-                onClick = onClick,
+            // 融进胶囊后不再挂点击：哪怕 enabled=false 的 clickable 也会吞掉落在它上面的点按，
+            // 让下面的「全部」「已归档」点不动
+            .then(
+                if (merge < 0.4f) Modifier.clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    onClick = onClick,
+                ) else Modifier
             ),
         contentAlignment = Alignment.Center,
     ) {
