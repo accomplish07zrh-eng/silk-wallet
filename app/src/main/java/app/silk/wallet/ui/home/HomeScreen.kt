@@ -67,6 +67,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -151,11 +153,15 @@ fun HomeScreen(
         scope.launch { snackbar.showSnackbar(if (card.archived) "已移出归档" else "已归档，可在「已归档」里找到") }
     }
 
+    val headerMotion = rememberHeaderMotion()
+    // 换分类、进出搜索时页头回到大标题
+    LaunchedEffect(filter, searching) { headerMotion.expand() }
+
     val clock = rememberFlowClock()
     CompositionLocalProvider(LocalFlowClock provides clock) {
         Box(Modifier.fillMaxSize()) {
             AppBackground(Modifier.haze(haze)) {
-                Column(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().nestedScroll(headerMotion.connection)) {
                     AnimatedContent(
                         targetState = searching,
                         transitionSpec = {
@@ -176,7 +182,7 @@ fun HomeScreen(
                                 searching = false
                             }
                         } else {
-                            Header(
+                            HomeHeader(
                                 subtitle = when {
                                     state.loading -> " "
                                     query.isNotBlank() -> "找到 ${state.cards.size} 张"
@@ -185,6 +191,7 @@ fun HomeScreen(
                                     else -> "共 ${state.total} 张卡片"
                                 },
                                 play = play,
+                                motion = headerMotion,
                                 onDraw = onDraw,
                                 onSearch = { searching = true },
                                 onSettings = onSettings,
@@ -194,7 +201,7 @@ fun HomeScreen(
                     when {
                         state.loading -> Unit
                         state.cards.isEmpty() -> EmptyState(filter, query, state.noticeDays, onAdd)
-                        else -> CardStack(
+                        else -> Box(Modifier.fillMaxSize().graphicsLayer { translationY = headerMotion.stretch }) { CardStack(
                             cards = state.cards,
                             filter = filter,
                             query = query,
@@ -219,7 +226,7 @@ fun HomeScreen(
                                 }
                                 vm.reorder(ids)
                             },
-                        )
+                        ) }
                     }
                 }
             }
@@ -280,55 +287,6 @@ fun HomeScreen(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun Header(subtitle: String, play: Boolean, onDraw: () -> Unit, onSearch: () -> Unit, onSettings: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(start = 22.dp, end = 18.dp, top = 14.dp, bottom = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                "Silk",
-                fontFamily = WordmarkFont,
-                fontStyle = FontStyle.Italic,
-                fontWeight = FontWeight.Bold,
-                fontSize = 44.sp,
-                letterSpacing = 0.2.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.enterRise(0, play),
-            )
-            // 数字变化时副标题上下翻动，而不是瞬间跳字
-            AnimatedContent(
-                targetState = subtitle,
-                transitionSpec = {
-                    val up = spring<IntOffset>(dampingRatio = 0.8f, stiffness = 420f)
-                    (slideInVertically(up) { it / 2 } + fadeIn(tween(180))) togetherWith
-                        (slideOutVertically(up) { -it / 2 } + fadeOut(tween(120)))
-                },
-                modifier = Modifier.enterRise(1, play),
-                label = "subtitle",
-            ) { text ->
-                Text(
-                    text,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        GlassCircleButton(Icons.Rounded.AutoAwesome, "抽卡", onDraw, Modifier.enterRise(1, play))
-        Spacer(Modifier.width(10.dp))
-        GlassCircleButton(Icons.Rounded.Search, "搜索", onSearch, Modifier.enterRise(2, play))
-        Spacer(Modifier.width(10.dp))
-        GlassCircleButton(Icons.Outlined.Settings, "设置", onSettings, Modifier.enterRise(3, play))
     }
 }
 

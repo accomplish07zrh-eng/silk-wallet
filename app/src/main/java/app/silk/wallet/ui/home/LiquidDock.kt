@@ -61,6 +61,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
@@ -120,6 +129,9 @@ fun LiquidDock(
     val dark = LocalDarkTheme.current
     val entries = CardFilter.entries
     val showAdd = selected == CardFilter.ALL
+    // 拖选手势只创建一次，回调里要读最新的选中项与回调（上次就是读了旧快照才出的 bug）
+    val latestSelected by rememberUpdatedState(selected)
+    val latestOnSelect by rememberUpdatedState(onSelect)
 
     // 0 = 圆钮完全分离，1 = 完全融入胶囊
     val merge = remember { Animatable(if (showAdd) 0f else 1f) }
@@ -128,6 +140,26 @@ fun LiquidDock(
             if (showAdd) 0f else 1f,
             spring(dampingRatio = 0.78f, stiffness = 210f),
         )
+    }
+
+    // 选中透镜：位置以“第几项”为单位，弹簧滑动；滑得快时被拉长（速度越大越扁长）
+    val lens = remember { Animatable(entries.indexOf(selected).toFloat()) }
+    // 按住底栏左右拖选时透镜抬起放大
+    val lift = remember { Animatable(0f) }
+    var scrubbing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    LaunchedEffect(selected) {
+        if (!scrubbing) lens.animateTo(entries.indexOf(selected).toFloat(), spring(dampingRatio = 0.66f, stiffness = 330f))
+    }
+    // 排序方式变了，排序图标弹一下
+    val sortBounce = remember { Animatable(1f) }
+    var lastSort by remember { mutableStateOf(sortMode) }
+    LaunchedEffect(sortMode) {
+        if (sortMode == lastSort) return@LaunchedEffect
+        lastSort = sortMode
+        sortBounce.snapTo(0.55f)
+        sortBounce.animateTo(1f, spring(dampingRatio = 0.32f, stiffness = 520f))
     }
 
     // 切换分类时整块玻璃弹一下
@@ -164,6 +196,9 @@ fun LiquidDock(
     val hairline = if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.10f)
     val rippleColor = MaterialTheme.colorScheme.onSurface
     val glint = if (dark) Color.White.copy(alpha = 0.55f) else Color(0xFFDDE6F5)
+    val lensFill = if (dark) Color.White.copy(alpha = 0.11f) else Color.Black.copy(alpha = 0.055f)
+    val lensRimTop = if (dark) Color.White.copy(alpha = 0.28f) else Color.White
+    val lensRimBottom = if (dark) Color.White.copy(alpha = 0.04f) else Color.Black.copy(alpha = 0.06f)
     val tilt = LocalTilt.current
 
     BoxWithConstraints(
@@ -258,10 +293,73 @@ fun LiquidDock(
                     .offset { IntOffset(capsuleOffsetPx.roundToInt(), 0) }
                     .width(with(density) { capsuleW.toDp() })
                     .fillMaxHeight()
-                    .padding(horizontal = 6.dp),
+                    .padding(horizontal = 6.dp)
+                    .pointerInput(entries) {
+                        val n = entries.size
+                        fun at(x: Float) = (x / (size.width.toFloat() / n) - 0.5f).coerceIn(-0.3f, n - 0.7f)
+                        var fingerX = 0f
+                        var lastCell = -1
+                        fun follow(x: Float) {
+                            val t = at(x)
+                            scope.launch { lens.animateTo(t, spring(dampingRatio = 0.82f, stiffness = 1300f)) }
+                            val cell = t.roundToInt().coerceIn(0, n - 1)
+                            if (cell != lastCell) {
+                                if (lastCell != -1) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                lastCell = cell
+                            }
+                        }
+                        fun finish() {
+                            val idx = lens.targetValue.roundToInt().coerceIn(0, n - 1)
+                            scrubbing = false
+                            scope.launch { lift.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 420f)) }
+                            if (entries[idx] != latestSelected) latestOnSelect(entries[idx])
+                            else scope.launch { lens.animateTo(idx.toFloat(), spring(dampingRatio = 0.66f, stiffness = 330f)) }
+                        }
+                        detectHorizontalDragGestures(
+                            onDragStart = { o ->
+                                scrubbing = true
+                                fingerX = o.x
+                                lastCell = -1
+                                scope.launch { lift.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 520f)) }
+                                follow(fingerX)
+                            },
+                            onDragEnd = { finish() },
+                            onDragCancel = { finish() },
+                            onHorizontalDrag = { change, dx ->
+                                change.consume()
+                                fingerX += dx
+                                follow(fingerX)
+                            },
+                        )
+                    }
+                    .drawBehind {
+                        val n = entries.size
+                        val itemW = size.width / n
+                        val k = (abs(lens.velocity) * 0.05f).coerceAtMost(0.45f)
+                        val up = lift.value
+                        val w = (itemW - 2.dp.toPx()) * (1f + k) * (1f + 0.12f * up)
+                        val h = (size.height - 10.dp.toPx()) * (1f - 0.16f * k) * (1f + 0.10f * up)
+                        val cx = itemW * (lens.value + 0.5f)
+                        val top = size.height / 2f - h / 2f
+                        val left = cx - w / 2f
+                        val radius = CornerRadius(h / 2f)
+                        drawRoundRect(
+                            lensFill.copy(alpha = lensFill.alpha * (1f + 0.7f * up)),
+                            topLeft = Offset(left, top),
+                            size = Size(w, h),
+                            cornerRadius = radius,
+                        )
+                        drawRoundRect(
+                            Brush.verticalGradient(listOf(lensRimTop, lensRimBottom), startY = top, endY = top + h),
+                            topLeft = Offset(left, top),
+                            size = Size(w, h),
+                            cornerRadius = radius,
+                            style = Stroke(width = 1.dp.toPx()),
+                        )
+                    },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                entries.forEach { f ->
+                entries.forEachIndexed { i, f ->
                     DockItem(
                         filter = f,
                         selected = f == selected,
@@ -271,6 +369,8 @@ fun LiquidDock(
                             else -> 0
                         },
                         onClick = { onSelect(f) },
+                        // 拖选时透镜经过的图标放大
+                        hover = { (1f - abs(lens.value - i)).coerceIn(0f, 1f) * lift.value },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -285,7 +385,11 @@ fun LiquidDock(
                     tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
                         .size(23.dp)
-                        .graphicsLayer { circleIconFade(m) },
+                        .graphicsLayer {
+                            circleIconFade(m)
+                            scaleY *= sortBounce.value
+                            scaleX *= 2f - sortBounce.value
+                        },
                 )
                 DropdownMenu(
                     expanded = sortMenu,
@@ -311,7 +415,7 @@ fun LiquidDock(
                     }
                 }
             }
-            DockCircle(cx = geo.circleCx, r = geo.circleR, h = hPx, merge = m, onClick = onAdd) {
+            DockCircle(cx = geo.circleCx, r = geo.circleR, h = hPx, merge = m, onClick = onAdd, pressSpin = 90f) {
                 Icon(
                     Icons.Rounded.Add,
                     contentDescription = "添加卡片",
@@ -358,11 +462,18 @@ private fun DockCircle(
     h: Float,
     merge: Float,
     onClick: () -> Unit,
+    pressSpin: Float = 0f,
     content: @Composable () -> Unit,
 ) {
     if (r <= 1f) return
     val density = LocalDensity.current
     val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val press by animateFloatAsState(
+        if (pressed) 1f else 0f,
+        spring(dampingRatio = 0.42f, stiffness = 480f),
+        label = "circlePress",
+    )
     Box(
         Modifier
             .offset { IntOffset((cx - r).roundToInt(), (h / 2f - r).roundToInt()) }
@@ -380,7 +491,7 @@ private fun DockCircle(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        content()
+        Box(Modifier.graphicsLayer { rotationZ = pressSpin * press }, contentAlignment = Alignment.Center) { content() }
     }
 }
 
@@ -391,8 +502,17 @@ private fun DockItem(
     selected: Boolean,
     count: Int,
     onClick: () -> Unit,
+    hover: () -> Float,
     modifier: Modifier = Modifier,
 ) {
+    val badgePop = remember { Animatable(1f) }
+    var lastCount by remember { mutableIntStateOf(count) }
+    LaunchedEffect(count) {
+        if (count == lastCount) return@LaunchedEffect
+        lastCount = count
+        badgePop.snapTo(1.45f)
+        badgePop.animateTo(1f, spring(dampingRatio = 0.32f, stiffness = 520f))
+    }
     val sel by animateFloatAsState(
         if (selected) 1f else 0f,
         animationSpec = tween(260),
@@ -420,9 +540,10 @@ private fun DockItem(
         Box(
             Modifier.graphicsLayer {
                 // pop 是欠阻尼弹簧、sel 是线性渐变：稳态相互抵消为 1，过程中先鼓后收
-                val s = 1f + 0.10f * pop - 0.10f * sel
+                val s = (1f + 0.10f * pop - 0.10f * sel) * (1f + 0.2f * hover())
                 scaleX = s
                 scaleY = s
+                translationY = -3.dp.toPx() * hover()
             }
         ) {
             Icon(
@@ -446,6 +567,10 @@ private fun DockItem(
                     Modifier
                         .align(Alignment.TopEnd)
                         .offset(x = 9.dp, y = (-4).dp)
+                        .graphicsLayer {
+                            scaleX = badgePop.value
+                            scaleY = badgePop.value
+                        }
                         .height(15.dp)
                         .widthIn(min = 15.dp)
                         .clip(CircleShape)
