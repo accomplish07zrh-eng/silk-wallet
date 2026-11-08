@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -138,6 +140,8 @@ fun CardStack(
     val list = rememberLazyListState()
     val overlapPx = with(density) { Overlap.toPx() }
     val trayPx = with(density) { TrayWidth.toPx() }
+    // 底栏占掉的高度：导航条 + 底栏外边距 14dp + 底栏 + 一点余量
+    val dockClearPx = WindowInsets.navigationBars.getBottom(density) + with(density) { (14.dp + DockHeight + 8.dp).toPx() }
 
     // 手势回调只创建一次，必须读最新的列表与设置
     val latestCards by rememberUpdatedState(cards)
@@ -158,6 +162,16 @@ fun CardStack(
 
     fun targetIndex(): Int =
         (startIndex + (total.floatValue / step).roundToInt()).coerceIn(0, (baseOrder.size - 1).coerceAtLeast(0))
+
+    // 被拖的卡相对槽位的剩余位移；拖过最顶 / 最底时加橡皮筋阻尼，不让卡冲出列表被裁成半截
+    fun residual(): Float {
+        val t = targetIndex()
+        val raw = total.floatValue - (t - startIndex) * step
+        val beyond = (t == 0 && raw < 0f) || (t == baseOrder.lastIndex && raw > 0f)
+        if (!beyond) return raw
+        val limit = step * 0.45f
+        return kotlin.math.sign(raw) * limit * (1f - kotlin.math.exp(-kotlin.math.abs(raw) / limit))
+    }
 
     // 松手后数据库写入要一会儿：这段时间继续按松手时的顺序排，避免先弹回旧顺序再跳到新顺序
     var pendingOrder by remember { mutableStateOf<List<Long>?>(null) }
@@ -195,9 +209,9 @@ fun CardStack(
             onReorder(final, !latestManual)
         }
         // 松手后把“剩余位移”弹簧收回槽位
-        val residual = total.floatValue - (targetIndex() - startIndex) * step
+        val rest = residual()
         scope.launch {
-            settle.snapTo(residual)
+            settle.snapTo(rest)
             settlingId = id
             dragId = null
             settle.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = 420f))
@@ -217,9 +231,13 @@ fun CardStack(
             val edge = with(density) { 90.dp.toPx() }
             val top = info.viewportStartOffset + edge
             val bottom = info.viewportEndOffset - edge
+            // 最后一张已经完整露在底栏上方就不再往下滚，免得把顶上的卡白白滚出屏幕
+            val lastItem = info.visibleItemsInfo.lastOrNull()
+            val endShown = lastItem != null && lastItem.index == info.totalItemsCount - 1 &&
+                lastItem.offset + lastItem.size <= info.viewportEndOffset - dockClearPx
             val v = when {
                 pointerY < top -> -((top - pointerY) / edge).coerceAtMost(1f)
-                pointerY > bottom -> ((pointerY - bottom) / edge).coerceAtMost(1f)
+                pointerY > bottom && !endShown -> ((pointerY - bottom) / edge).coerceAtMost(1f)
                 else -> 0f
             } * with(density) { 520.dp.toPx() }
             // 重排时 requestScrollToItem 会打断正在进行的滚动，这一帧当作没滚，下一帧接着滚
@@ -340,7 +358,7 @@ fun CardStack(
                         .graphicsLayer {
                             // 被拖的卡只渲染剩余位移；松手后由 settle 收回
                             val manual = when {
-                                dragging -> total.floatValue - (targetIndex() - startIndex) * step
+                                dragging -> residual()
                                 settlingId == card.id -> settle.value
                                 else -> 0f
                             }
