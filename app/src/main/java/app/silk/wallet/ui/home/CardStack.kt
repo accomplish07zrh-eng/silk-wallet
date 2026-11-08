@@ -94,6 +94,9 @@ import app.silk.wallet.ui.theme.enterRise
 import app.silk.wallet.ui.theme.floatingCard
 import app.silk.wallet.ui.theme.pressScale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -156,20 +159,38 @@ fun CardStack(
     fun targetIndex(): Int =
         (startIndex + (total.floatValue / step).roundToInt()).coerceIn(0, (baseOrder.size - 1).coerceAtLeast(0))
 
-    val order: List<Long>? = if (dragId != null && baseOrder.isNotEmpty()) {
+    // 松手后数据库写入要一会儿：这段时间继续按松手时的顺序排，避免先弹回旧顺序再跳到新顺序
+    var pendingOrder by remember { mutableStateOf<List<Long>?>(null) }
+    val cardIds = cards.map { it.id }
+    val pending = pendingOrder?.takeIf { p -> p != cardIds && p.size == cardIds.size && p.toSet() == cardIds.toSet() }
+    LaunchedEffect(pendingOrder, pending == null) {
+        if (pendingOrder == null) return@LaunchedEffect
+        if (pending == null) { pendingOrder = null; return@LaunchedEffect }
+        delay(1500)
+        pendingOrder = null
+    }
+
+    // 手势回调是在拖动开始前创建的，必须现算顺序，不能读组合时的快照
+    fun dragOrder(): List<Long>? = if (dragId != null && baseOrder.isNotEmpty()) {
         val ids = baseOrder.toMutableList()
         val id = ids.removeAt(startIndex)
         ids.add(targetIndex(), id)
         ids
     } else null
+    val order: List<Long>? = dragOrder() ?: pending
+
+    // 顺序变化时按“下标”而不是“首张卡的 key”保持滚动位置：
+    // 否则把卡拖到最顶上时，列表会跟着原来的首张卡走，新的首张卡被顶出屏幕只露半截
+    fun pinScroll() = list.requestScrollToItem(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset)
     // 拖动中按本地顺序排，卡片内容始终取最新数据
     val shown = order?.mapNotNull { id -> cards.firstOrNull { it.id == id } } ?: cards
 
     fun finishDrag() {
         val id = dragId ?: return
-        val final = order ?: return
+        val final = dragOrder() ?: return
         liftedId = null
         if (final != latestCards.map { it.id }) {
+            pendingOrder = final
             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             onReorder(final, !latestManual)
         }
@@ -201,7 +222,11 @@ fun CardStack(
                 pointerY > bottom -> ((pointerY - bottom) / edge).coerceAtMost(1f)
                 else -> 0f
             } * with(density) { 520.dp.toPx() }
-            if (v != 0f && dt > 0f) total.floatValue += list.scrollBy(v * dt)
+            // 重排时 requestScrollToItem 会打断正在进行的滚动，这一帧当作没滚，下一帧接着滚
+            if (v != 0f && dt > 0f) total.floatValue += try { list.scrollBy(v * dt) } catch (e: CancellationException) {
+                if (!isActive) throw e
+                0f
+            }
         }
     }
 
@@ -302,7 +327,10 @@ fun CardStack(
                                         val before = targetIndex()
                                         total.floatValue += amount.y
                                         pointerY += amount.y
-                                        if (targetIndex() != before) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        if (targetIndex() != before) {
+                                            pinScroll()
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
                                     },
                                     onDragEnd = { finishDrag() },
                                     onDragCancel = { finishDrag() },
