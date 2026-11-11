@@ -427,7 +427,7 @@ fun CardStack(
 
 /** 到期角标：半透明暗底 + 彩色圆点 */
 @Composable
-private fun ExpiryBadge(card: Card, noticeDays: Int) {
+internal fun ExpiryBadge(card: Card, noticeDays: Int) {
     val (text, dot) = when (CardMath.expiry(card.expMonth, card.expYear, noticeDays)) {
         CardMath.Expiry.EXPIRED -> "已过期" to Color(0xFFFF5A52)
         CardMath.Expiry.SOON -> "${CardMath.daysLeft(card.expMonth, card.expYear)} 天后到期" to Color(0xFFFF9F0A)

@@ -80,6 +80,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.ViewModule
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.ViewAgenda
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.mutableStateOf
@@ -124,6 +129,10 @@ fun LiquidDock(
     onSortSelect: (SortMode) -> Unit,
     hazeState: HazeState,
     modifier: Modifier = Modifier,
+    /** 首页陈列：叠放 / 平铺，和排序放在同一个菜单里 */
+    grid: Boolean = false,
+    columns: Int = 2,
+    onLayoutChange: (grid: Boolean, columns: Int) -> Unit = { _, _ -> },
 ) {
     val density = LocalDensity.current
     val dark = LocalDarkTheme.current
@@ -142,9 +151,9 @@ fun LiquidDock(
         )
     }
 
-    // 选中透镜：位置以“第几项”为单位，弹簧滑动；滑得快时被拉长（速度越大越扁长）
+    // 拖选位置（以“第几项”为单位）：手指按住左右滑时，经过的图标放大
     val lens = remember { Animatable(entries.indexOf(selected).toFloat()) }
-    // 按住底栏左右拖选时透镜抬起放大
+    // 按住底栏左右拖选时为 1，松手回 0
     val lift = remember { Animatable(0f) }
     var scrubbing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -196,9 +205,6 @@ fun LiquidDock(
     val hairline = if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.10f)
     val rippleColor = MaterialTheme.colorScheme.onSurface
     val glint = if (dark) Color.White.copy(alpha = 0.55f) else Color(0xFFDDE6F5)
-    val lensFill = if (dark) Color.White.copy(alpha = 0.11f) else Color.Black.copy(alpha = 0.055f)
-    val lensRimTop = if (dark) Color.White.copy(alpha = 0.28f) else Color.White
-    val lensRimBottom = if (dark) Color.White.copy(alpha = 0.04f) else Color.Black.copy(alpha = 0.06f)
     val tilt = LocalTilt.current
 
     BoxWithConstraints(
@@ -331,31 +337,6 @@ fun LiquidDock(
                                 follow(fingerX)
                             },
                         )
-                    }
-                    .drawBehind {
-                        val n = entries.size
-                        val itemW = size.width / n
-                        val k = (abs(lens.velocity) * 0.05f).coerceAtMost(0.45f)
-                        val up = lift.value
-                        val w = (itemW - 2.dp.toPx()) * (1f + k) * (1f + 0.12f * up)
-                        val h = (size.height - 10.dp.toPx()) * (1f - 0.16f * k) * (1f + 0.10f * up)
-                        val cx = itemW * (lens.value + 0.5f)
-                        val top = size.height / 2f - h / 2f
-                        val left = cx - w / 2f
-                        val radius = CornerRadius(h / 2f)
-                        drawRoundRect(
-                            lensFill.copy(alpha = lensFill.alpha * (1f + 0.7f * up)),
-                            topLeft = Offset(left, top),
-                            size = Size(w, h),
-                            cornerRadius = radius,
-                        )
-                        drawRoundRect(
-                            Brush.verticalGradient(listOf(lensRimTop, lensRimBottom), startY = top, endY = top + h),
-                            topLeft = Offset(left, top),
-                            size = Size(w, h),
-                            cornerRadius = radius,
-                            style = Stroke(width = 1.dp.toPx()),
-                        )
                     },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -397,15 +378,51 @@ fun LiquidDock(
                     shape = RoundedCornerShape(20.dp),
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
+                    Text(
+                        "陈列",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, top = 6.dp, bottom = 2.dp),
+                    )
+                    listOf(Triple(false, 0, "叠放"), Triple(true, 2, "两列"), Triple(true, 3, "三列"), Triple(true, 4, "四列")).forEach { (g, cols, label) ->
+                        val on = g == grid && (!g || cols == columns)
+                        DropdownMenuItem(
+                            text = { Text(label, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal) },
+                            leadingIcon = {
+                                Icon(
+                                    when (cols) {
+                                        0 -> Icons.Rounded.ViewAgenda
+                                        2 -> Icons.Rounded.GridView
+                                        3 -> Icons.Rounded.ViewModule
+                                        else -> Icons.Rounded.Apps
+                                    },
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            trailingIcon = {
+                                if (on) Icon(Icons.Rounded.Check, contentDescription = null, Modifier.size(18.dp))
+                            },
+                            onClick = {
+                                onLayoutChange(g, cols)
+                                sortMenu = false
+                            },
+                        )
+                    }
+                    HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Text(
+                        "排序",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 2.dp),
+                    )
                     SortMode.entries.forEach { mode ->
                         DropdownMenuItem(
                             text = { Text(mode.label, fontWeight = if (mode == sortMode) FontWeight.SemiBold else FontWeight.Normal) },
-                            leadingIcon = {
-                                if (mode == sortMode) {
-                                    Icon(Icons.Rounded.Check, contentDescription = null, Modifier.size(18.dp))
-                                } else {
-                                    Spacer(Modifier.size(18.dp))
-                                }
+                            leadingIcon = { Spacer(Modifier.size(18.dp)) },
+                            trailingIcon = {
+                                if (mode == sortMode) Icon(Icons.Rounded.Check, contentDescription = null, Modifier.size(18.dp))
                             },
                             onClick = {
                                 onSortSelect(mode)

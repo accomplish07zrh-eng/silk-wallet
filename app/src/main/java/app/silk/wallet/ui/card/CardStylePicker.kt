@@ -29,7 +29,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.shape.CircleShape
-import app.silk.wallet.data.SkinStore
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,18 +58,19 @@ fun CardStylePicker(
     /** 非空时在最前面显示「图片」选项（从相册导入背景图） */
     onPickImage: (() -> Unit)? = null,
 ) {
-    val context = LocalContext.current
-    SkinStore.ensureLoaded(context)
-    val expiries by SkinStore.expiries.collectAsState()
-    // 仍在使用期内的皮肤排在基础配色前面，按稀有度从高到低
-    val now = System.currentTimeMillis()
-    val ownedSkins = remember(expiries, now / 60_000) {
-        CardStyles.skins.filter { (expiries[it.id] ?: 0L) > now }.sortedByDescending { it.rarity.ordinal }
-    }
+    // 皮肤全部开放，排在基础配色前面，按稀有度从高到低
+    val allSkins = remember { CardStyles.skins.sortedByDescending { it.rarity.ordinal } }
     val listState = rememberLazyListState()
     // 打开时把已选样式滚到可见处，避免选中项藏在右侧
     LaunchedEffect(Unit) {
-        val index = CardStyles.presets.indexOfFirst { it.id == selectedId }
+        val skinIndex = allSkins.indexOfFirst { it.id == selectedId }
+        val presetIndex = CardStyles.presets.indexOfFirst { it.id == selectedId }
+        val lead = if (onPickImage != null) 2 else 1
+        val index = when {
+            skinIndex >= 0 -> lead + skinIndex
+            presetIndex >= 0 -> lead + allSkins.size + presetIndex
+            else -> 0
+        }
         if (index > 0) listState.scrollToItem(index)
     }
     LazyRow(
@@ -105,7 +105,7 @@ fun CardStylePicker(
                 autoIcon = true,
             )
         }
-        items(ownedSkins, key = { it.id }) { skin ->
+        items(allSkins, key = { it.id }) { skin ->
             StyleSwatch(
                 label = skin.label,
                 brush = Brush.linearGradient(skin.colors),
@@ -115,7 +115,6 @@ fun CardStylePicker(
                 ringColor = ringColor,
                 onClick = { onSelect(skin.id) },
                 rarityGlow = skin.rarity.glow,
-                sublabel = SkinStore.remainingLabel(expiries[skin.id] ?: 0L, now),
             )
         }
         items(CardStyles.presets, key = { it.id }) { preset ->

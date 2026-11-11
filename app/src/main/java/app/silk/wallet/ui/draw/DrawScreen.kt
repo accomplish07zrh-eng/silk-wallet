@@ -86,8 +86,7 @@ import androidx.compose.ui.zIndex
 import app.silk.wallet.SilkApp
 import app.silk.wallet.data.Settings
 import app.silk.wallet.data.Card
-import app.silk.wallet.data.SkinStore
-import app.silk.wallet.data.SkinDraw
+import app.silk.wallet.data.DrawStore
 import app.silk.wallet.domain.CardBrand
 import app.silk.wallet.domain.CardStylePreset
 import app.silk.wallet.domain.CardStyles
@@ -115,14 +114,10 @@ import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.random.Random
 
-private enum class DrawMode(val label: String) { CARD("今日用卡"), SKIN("抽皮肤") }
 private enum class Phase { IDLE, SPINNING, REVEAL }
 
-/** 轮盘上的一格：要么是用户自己的卡，要么是一张盖着的神秘皮肤卡 */
-private sealed interface DeckItem {
-    data class Real(val card: Card, val preset: CardStylePreset) : DeckItem
-    data object Mystery : DeckItem
-}
+/** 轮盘上的一格：用户自己的一张卡 */
+private data class DeckItem(val card: Card, val preset: CardStylePreset)
 
 private val Ink = Color(0xFF111114)
 
@@ -152,13 +147,9 @@ fun DrawScreen(
     val context = LocalContext.current
     val view = LocalView.current
     val scope = rememberCoroutineScope()
-    SkinStore.ensureLoaded(context)
 
-    var mode by remember { mutableStateOf(DrawMode.CARD) }
     var phase by remember { mutableStateOf(Phase.IDLE) }
     var resultIndex by remember { mutableStateOf(-1) }
-    var resultSkin by remember { mutableStateOf<SkinDraw?>(null) }
-    var showGallery by remember { mutableStateOf(false) }
 
     val allCards by app.cards.observe().collectAsState(initial = emptyList())
     val usable = remember(allCards) {
@@ -167,16 +158,11 @@ fun DrawScreen(
         }
     }
     // 轮盘至少 7 格才转得开：卡少时循环铺满
-    val deck: List<DeckItem> = remember(mode, usable) {
-        when (mode) {
-            DrawMode.SKIN -> List(9) { DeckItem.Mystery }
-            DrawMode.CARD -> if (usable.isEmpty()) emptyList() else {
-                val items = usable.map {
-                    DeckItem.Real(it, CardStyles.resolve(it.styleId, it.bankCode, CardBrand.of(it.brand)))
-                }
-                val reps = ((7 + items.size - 1) / items.size).coerceAtLeast(1)
-                List(reps) { items }.flatten()
-            }
+    val deck: List<DeckItem> = remember(usable) {
+        if (usable.isEmpty()) emptyList() else {
+            val items = usable.map { DeckItem(it, CardStyles.resolve(it.styleId, it.bankCode, CardBrand.of(it.brand))) }
+            val reps = ((7 + items.size - 1) / items.size).coerceAtLeast(1)
+            List(reps) { items }.flatten()
         }
     }
 
@@ -205,39 +191,19 @@ fun DrawScreen(
             .collect { if (phase == Phase.SPINNING) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK) }
     }
 
-    fun switchMode(m: DrawMode) {
-        if (phase == Phase.SPINNING || m == mode) return
-        mode = m
-        phase = Phase.IDLE
-        resultIndex = -1
-        resultSkin = null
-        scope.launch {
-            reveal.snapTo(0f)
-            pos.snapTo(0f)
-        }
-    }
-
-    val canDraw = deck.isNotEmpty() && phase != Phase.SPINNING &&
-        (mode == DrawMode.CARD || SkinStore.canDrawSkin(context))
+    // 不限次数：一天要刷几次卡就抽几次
+    val canDraw = deck.isNotEmpty() && phase != Phase.SPINNING
 
     fun spin() {
         if (!canDraw) return
         val n = deck.size
         // 先决定结果，再让轮盘“恰好”停在那一格
-        val target = when (mode) {
-            DrawMode.SKIN -> {
-                resultSkin = SkinStore.drawSkin(context)
-                Random.nextInt(n)
-            }
-            DrawMode.CARD -> {
-                val today = SkinStore.todaysCard(context)
-                val weights = deck.map { item -> if ((item as DeckItem.Real).card.id == today) 0.35f else 1f }
-                var r = Random.nextFloat() * weights.sum()
-                var idx = 0
-                while (idx < n - 1 && r >= weights[idx]) { r -= weights[idx]; idx++ }
-                idx
-            }
-        }
+        // 刚抽过的那张权重降低，连抽时不容易总是同一张
+        val last = DrawStore.lastCard(context)
+        val weights = deck.map { item -> if (item.card.id == last && usable.size > 1) 0.35f else 1f }
+        var r = Random.nextFloat() * weights.sum()
+        var target = 0
+        while (target < n - 1 && r >= weights[target]) { r -= weights[target]; target++ }
         scope.launch {
             // 先把上一轮的结果收回轮盘，再开转
             if (reveal.value > 0f) reveal.animateTo(0f, tween(260, easing = FastOutSlowInEasing))
@@ -252,17 +218,14 @@ fun DrawScreen(
             pos.animateTo(end, tween(4200, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)))
             phase = Phase.REVEAL
             view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-            if (mode == DrawMode.CARD) {
-                (deck[target] as? DeckItem.Real)?.let { SkinStore.rememberCardDraw(context, it.card.id) }
-            }
+            DrawStore.rememberCardDraw(context, deck[target].card.id)
             reveal.animateTo(1f, tween(2400, easing = LinearEasing))
         }
     }
 
-    BackHandler(enabled = !showGallery, onBack = onBack)
+    BackHandler(onBack = onBack)
 
-    val glow = vivid(if (mode == DrawMode.SKIN) resultSkin?.skin?.rarity else null)
-    val legendary = mode == DrawMode.SKIN && resultSkin?.skin?.rarity == Rarity.LEGENDARY
+    val glow = vivid(null)
     val flowClock = rememberFlowClock()
 
     CompositionLocalProvider(LocalFlowClock provides flowClock) {
@@ -331,7 +294,7 @@ fun DrawScreen(
                             centerY = centerY,
                             sweep = isResult,
                         ) { flipDeg ->
-                            SlotFace(item, flipDeg, resultSkin?.skin.takeIf { isResult })
+                            SlotFace(item, flipDeg)
                         }
                     }
                 } else {
@@ -347,7 +310,7 @@ fun DrawScreen(
                 }
 
                 Sparks(progress = { reveal.value }, color = glow, center = center, modifier = Modifier.fillMaxSize())
-                Motes(progress = { reveal.value }, color = glow, center = center, rich = legendary, modifier = Modifier.fillMaxSize())
+                Motes(progress = { reveal.value }, color = glow, center = center, rich = false, modifier = Modifier.fillMaxSize())
                 with(density) {
                     Box(
                         Modifier
@@ -357,10 +320,7 @@ fun DrawScreen(
                     ) {
                         ResultPanel(
                             visible = phase == Phase.REVEAL && reveal.value > 0.6f,
-                            mode = mode,
-                            glow = glow,
-                            card = (deck.getOrNull(resultIndex) as? DeckItem.Real)?.card,
-                            skin = resultSkin,
+                            card = deck.getOrNull(resultIndex)?.card,
                             onCopy = { card ->
                                 app.clipboard.copy(context, "卡号", card.number, settings.clipboardSeconds)
                             },
@@ -369,7 +329,7 @@ fun DrawScreen(
                 }
             }
 
-            // 顶栏：返回 + 模式切换
+            // 顶栏：返回 + 标题
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -386,16 +346,10 @@ fun DrawScreen(
                     tint = Ink,
                 )
                 Spacer(Modifier.weight(1f))
-                ModeSwitch(mode = mode, onSelect = ::switchMode)
+                Text("这次用哪张", fontFamily = TitleSerif, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Ink, letterSpacing = 1.sp)
                 Spacer(Modifier.weight(1f))
-                GlassCircleButton(
-                    icon = Icons.Rounded.Style,
-                    contentDescription = "皮肤图鉴",
-                    onClick = { showGallery = true },
-                    size = 42.dp,
-                    iconSize = 20.dp,
-                    tint = Ink,
-                )
+                // 与左侧返回钮等宽，让标题居中
+                Spacer(Modifier.size(42.dp))
             }
 
             // 底部：黑色主按钮
@@ -409,9 +363,7 @@ fun DrawScreen(
                 DrawButton(
                     text = when {
                         phase == Phase.SPINNING -> "· · ·"
-                        mode == DrawMode.SKIN && !SkinStore.canDrawSkin(context) -> "今日已抽，明天再来"
                         phase == Phase.REVEAL -> "再抽一次"
-                        mode == DrawMode.SKIN -> "抽一款皮肤"
                         else -> "抽一张"
                     },
                     enabled = canDraw,
@@ -420,149 +372,12 @@ fun DrawScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    if (mode == DrawMode.SKIN) "稀有 60% · 史诗 30% · 传说 10%" else "从未过期、未归档的卡里随机抽一张",
+                    "从未过期、未归档的卡里随机抽一张 · 不限次数",
                     color = Ink.copy(alpha = 0.38f),
                     fontSize = 11.sp,
                 )
             }
 
-            AnimatedVisibility(
-                visible = showGallery,
-                enter = fadeIn(tween(200)) + slideInVertically(spring(dampingRatio = 0.86f, stiffness = 320f)) { it / 6 },
-                exit = fadeOut(tween(160)),
-            ) {
-                SkinGallery(onClose = { showGallery = false })
-            }
-        }
-    }
-}
-
-/**
- * 皮肤图鉴：按传说 / 史诗 / 稀有分组的两列网格，每张都是实时渲染的卡面。
- * 已拥有的标剩余时间（稀有为永久）；未获得的整张磨砂模糊并加锁。
- */
-@Composable
-private fun SkinGallery(onClose: () -> Unit) {
-    BackHandler(onBack = onClose)
-    val expiries by SkinStore.expiries.collectAsState()
-    val now = System.currentTimeMillis()
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Color.White)
-            .statusBarsPadding()
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 22.dp, end = 18.dp, top = 10.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("图鉴", fontFamily = TitleSerif, fontWeight = FontWeight.Bold, fontSize = 31.sp, color = Ink, letterSpacing = 1.5.sp)
-                val owned = CardStyles.skins.count { (expiries[it.id] ?: 0L) > now }
-                Text("已拥有 $owned / ${CardStyles.skins.size}", fontSize = 13.sp, color = Ink.copy(alpha = 0.5f))
-            }
-            GlassCircleButton(
-                icon = Icons.Rounded.Close,
-                contentDescription = "关闭图鉴",
-                onClick = onClose,
-                size = 42.dp,
-                iconSize = 20.dp,
-                tint = Ink,
-            )
-        }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 40.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            listOf(Rarity.LEGENDARY, Rarity.EPIC, Rarity.RARE).forEach { rarity ->
-                item(span = { GridItemSpan(2) }, key = "h_" + rarity.name) {
-                    Row(Modifier.padding(start = 4.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(vivid(rarity)))
-                        Spacer(Modifier.size(8.dp))
-                        Text(rarity.label, fontFamily = TitleSerif, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Ink)
-                        Spacer(Modifier.size(8.dp))
-                        Text(
-                            rarity.days?.let { "抽到后可用 $it 天 · ${rarity.weight}%" } ?: "永久 · ${rarity.weight}%",
-                            fontSize = 12.sp,
-                            color = Ink.copy(alpha = 0.45f),
-                        )
-                    }
-                }
-                items(CardStyles.skins.filter { it.rarity == rarity }, key = { it.id }) { skin ->
-                    GalleryItem(skin, expiries[skin.id] ?: 0L, now)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GalleryItem(skin: CardStylePreset, expiresAt: Long, now: Long) {
-    val owned = expiresAt > now
-    Column {
-        BoxWithConstraints(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(1.586f)
-                .shadow(if (owned) 10.dp else 4.dp, CardShape)
-                .clip(CardShape)
-        ) {
-            // 卡面按首页列表的原尺寸排版再整体缩小，字号比例与真卡一致
-            val design = 340.dp
-            val k = maxWidth / design
-            Box(
-                Modifier
-                    .requiredSize(design, design / 1.586f)
-                    .graphicsLayer {
-                        scaleX = k
-                        scaleY = k
-                    }
-                    .then(if (owned) Modifier else Modifier.blur(14.dp))
-            ) {
-                CardFront(skinSampleCard(skin), skin, masked = true, modifier = Modifier.fillMaxSize())
-            }
-            if (!owned) {
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .background(Color.White.copy(alpha = 0.45f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        androidx.compose.material3.Icon(
-                            Icons.Rounded.Lock,
-                            contentDescription = null,
-                            tint = Ink.copy(alpha = 0.7f),
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Text("未获得", fontSize = 11.sp, color = Ink.copy(alpha = 0.6f))
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.size(6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                skin.label,
-                fontFamily = TitleSerif,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
-                color = if (owned) Ink else Ink.copy(alpha = 0.45f),
-            )
-            Spacer(Modifier.weight(1f))
-            if (owned) {
-                Text(
-                    SkinStore.remainingLabel(expiresAt, now) ?: "永久",
-                    fontSize = 11.sp,
-                    color = vivid(skin.rarity),
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
         }
     }
 }
@@ -673,72 +488,16 @@ private fun Float.liftCurve(): Float {
 
 /** 一格卡面：真卡（打码）或神秘卡背；翻到背面角度时换成对应的背面 */
 @Composable
-private fun SlotFace(item: DeckItem, flipDeg: Float, revealedSkin: CardStylePreset?) {
+private fun SlotFace(item: DeckItem, flipDeg: Float) {
     val a = ((flipDeg % 360f) + 360f) % 360f
     val backHalf = a in 90f..270f
-    when (item) {
-        is DeckItem.Real -> {
-            if (backHalf) {
-                CardBack(
-                    item.card, item.preset, masked = true,
-                    modifier = Modifier.fillMaxSize().graphicsLayer { rotationY = 180f },
-                )
-            } else {
-                CardFront(item.card, item.preset, masked = true, modifier = Modifier.fillMaxSize())
-            }
-        }
-        DeckItem.Mystery -> {
-            // 神秘卡：转过 90° 后露出抽中的皮肤
-            val showSkin = revealedSkin != null && flipDeg >= 90f
-            if (showSkin) {
-                Box(Modifier.fillMaxSize().graphicsLayer { if (backHalf) rotationY = 180f }) {
-                    CardFront(skinSampleCard(revealedSkin!!), revealedSkin, masked = true, modifier = Modifier.fillMaxSize())
-                }
-            } else {
-                MysteryBack(Modifier.fillMaxSize().graphicsLayer { if (backHalf) rotationY = 180f })
-            }
-        }
-    }
-}
-
-private fun skinSampleCard(skin: CardStylePreset) = Card(
-    id = 0,
-    holder = "SILK",
-    number = "6200000000008888",
-    brand = CardBrand.UNKNOWN.name,
-    bank = skin.label,
-    createdAt = 0,
-    updatedAt = 0,
-)
-
-/** 神秘卡背：黑金流沙底 + 金色 Silk 字标 */
-@Composable
-private fun MysteryBack(modifier: Modifier = Modifier) {
-    val tilt = LocalTilt.current
-    val clock = LocalFlowClock.current
-    Box(
-        modifier
-            .clip(CardShape)
-            .flowingGradient(
-                listOf(Color(0xFF26262E), Color(0xFF121218), Color(0xFF060609)),
-                lightSurface = false, time = clock, tilt = tilt, effect = 3,
-            )
-            .border(1.dp, Brush.verticalGradient(listOf(Color(0x66FFE3A8), Color(0x10FFFFFF))), CardShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                "Silk",
-                fontFamily = WordmarkFont,
-                fontStyle = FontStyle.Italic,
-                fontWeight = FontWeight.Bold,
-                fontSize = 46.sp,
-                style = TextStyle(
-                    brush = Brush.linearGradient(listOf(Color(0xFFFFE9B0), Color(0xFFD9A441), Color(0xFFFFF4D6))),
-                ),
-            )
-            Text("?  ?  ?", color = Color(0xFFFFE3A8).copy(alpha = 0.55f), fontSize = 13.sp, letterSpacing = 4.sp)
-        }
+    if (backHalf) {
+        CardBack(
+            item.card, item.preset, masked = true,
+            modifier = Modifier.fillMaxSize().graphicsLayer { rotationY = 180f },
+        )
+    } else {
+        CardFront(item.card, item.preset, masked = true, modifier = Modifier.fillMaxSize())
     }
 }
 
@@ -857,37 +616,6 @@ private fun SpeedStreaks(speed: () -> Float, centerY: Float, bandH: Float, modif
     }
 }
 
-/** 模式切换：浅灰轨道 + 白色选中块（带投影） */
-@Composable
-private fun ModeSwitch(mode: DrawMode, onSelect: (DrawMode) -> Unit) {
-    Row(
-        Modifier
-            .clip(CircleShape)
-            .background(Color(0xFFF0F0F3))
-            .padding(4.dp),
-    ) {
-        DrawMode.entries.forEach { m ->
-            val sel = m == mode
-            val k by animateFloatAsState(if (sel) 1f else 0f, spring(dampingRatio = 0.8f, stiffness = 500f), label = "modeBg")
-            Box(
-                Modifier
-                    .shadow((6 * k).dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.12f))
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = k))
-                    .springClickable(pressedScale = 0.92f) { onSelect(m) }
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    m.label,
-                    fontSize = 14.sp,
-                    fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium,
-                    color = if (sel) Ink else Ink.copy(alpha = 0.5f),
-                )
-            }
-        }
-    }
-}
-
 /** 抽卡主按钮：黑色胶囊 + 稀有度色光晕投影 */
 @Composable
 private fun DrawButton(text: String, enabled: Boolean, glow: Color, onClick: () -> Unit) {
@@ -909,10 +637,7 @@ private fun DrawButton(text: String, enabled: Boolean, glow: Color, onClick: () 
 @Composable
 private fun ResultPanel(
     visible: Boolean,
-    mode: DrawMode,
-    glow: Color,
     card: Card?,
-    skin: SkinDraw?,
     onCopy: (Card) -> Unit,
 ) {
     AnimatedVisibility(
@@ -922,9 +647,8 @@ private fun ResultPanel(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            when (mode) {
-                DrawMode.CARD -> if (card != null) {
-                    Text("今天就用它", color = Ink.copy(alpha = 0.45f), fontSize = 12.sp, letterSpacing = 4.sp)
+            if (card != null) {
+                    Text("这次就用它", color = Ink.copy(alpha = 0.45f), fontSize = 12.sp, letterSpacing = 4.sp)
                     Spacer(Modifier.height(8.dp))
                     Text(
                         card.bank.ifBlank { CardBrand.of(card.brand).displayName } + "  ·  " + card.number.takeLast(4),
@@ -944,29 +668,6 @@ private fun ResultPanel(
                         Text("复制卡号", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
                 }
-                DrawMode.SKIN -> if (skin != null) {
-                    val preset = skin.skin
-                    Text(
-                        "${preset.rarity.label} - ${preset.label}",
-                        fontFamily = TitleSerif,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 26.sp,
-                        color = Ink,
-                        letterSpacing = 2.sp,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        when {
-                            preset.rarity.days == null && skin.isNew -> "已永久收入卡面样式 · 在卡片详情里给任意卡穿上"
-                            preset.rarity.days == null -> "已拥有的永久皮肤 · 这次是重复抽到"
-                            skin.isNew -> "可使用 ${preset.rarity.days} 天 · 在卡片详情里给任意卡穿上"
-                            else -> "已拥有 · 使用期已重新计满 ${preset.rarity.days} 天"
-                        },
-                        color = Ink.copy(alpha = 0.5f),
-                        fontSize = 12.sp,
-                    )
-                }
-            }
         }
     }
 }

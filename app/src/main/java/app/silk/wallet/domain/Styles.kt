@@ -33,17 +33,6 @@ enum class Rarity(val label: String, val weight: Int, val glow: Color, val days:
     LEGENDARY("传说", 10, Color(0xFFFFC857), 1),
 }
 
-/**
- * 抽卡皮肤的当前使用权：id → 到期时间（毫秒，Long.MAX_VALUE 为永久）。
- * 由 DrawStore 维护；样式解析时据此判断皮肤是否仍可用，过期即回落到自动配色。
- */
-object SkinAccess {
-    @Volatile
-    var expiries: Map<String, Long> = emptyMap()
-
-    fun isActive(id: String, now: Long = System.currentTimeMillis()): Boolean = (expiries[id] ?: 0L) > now
-}
-
 /** 卡面着色器特效（与 FlowShader 中 uMode 的分支一一对应） */
 object CardEffect {
     const val NONE = 0
@@ -180,9 +169,9 @@ object CardStyles {
         ),
     )
 
-    /** 皮肤过期后不再解析出来：穿着它的卡自动回到银行 / 卡组织的默认配色 */
+    /** 皮肤全部开放，任何卡都能直接穿上 */
     fun byId(id: String?): CardStylePreset? =
-        presets.firstOrNull { it.id == id } ?: skins.firstOrNull { it.id == id && SkinAccess.isActive(it.id) }
+        presets.firstOrNull { it.id == id } ?: skins.firstOrNull { it.id == id }
 
     /** 自动配色：发卡行主题色优先，其次按卡组织 */
     private val autoByBank = mapOf(

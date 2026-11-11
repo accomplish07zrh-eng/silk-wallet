@@ -201,6 +201,25 @@ fun HomeScreen(
                     when {
                         state.loading -> Unit
                         state.cards.isEmpty() -> EmptyState(filter, query, state.noticeDays, onAdd)
+                        settings.grid -> Box(Modifier.fillMaxSize().graphicsLayer { translationY = headerMotion.stretch }) { CardGrid(
+                            cards = state.cards,
+                            filter = filter,
+                            query = query,
+                            masked = settings.maskNumbers,
+                            noticeDays = state.noticeDays,
+                            play = play,
+                            hiddenId = detail?.id,
+                            columns = settings.gridColumns,
+                            onColumnsChange = { scope.launch { app.prefs.setGridColumns(it) } },
+                            onOpen = { card, from ->
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                detailFrom = from
+                                detail = card
+                            },
+                            onEdit = { onEdit(it.id) },
+                            onArchive = ::toggleArchive,
+                            onDelete = ::deleteWithUndo,
+                        ) }
                         else -> Box(Modifier.fillMaxSize().graphicsLayer { translationY = headerMotion.stretch }) { CardStack(
                             cards = state.cards,
                             filter = filter,
@@ -242,6 +261,14 @@ fun HomeScreen(
                 onAdd = onAdd,
                 sortMode = state.sort,
                 onSortSelect = vm::setSort,
+                grid = settings.grid,
+                columns = settings.gridColumns,
+                onLayoutChange = { g, cols ->
+                    scope.launch {
+                        app.prefs.setGrid(g)
+                        if (g) app.prefs.setGridColumns(cols)
+                    }
+                },
                 hazeState = haze,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)

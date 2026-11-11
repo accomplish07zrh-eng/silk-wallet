@@ -27,7 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Style
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -272,7 +272,7 @@ fun HomeHeader(
                 )
             }
         }
-        HeaderButton(Icons.Rounded.AutoAwesome, "抽卡", IconFx.Twinkle, motion, onDraw, Modifier.enterRise(1, play))
+        HeaderButton(Icons.Rounded.Style, "抽卡", IconFx.Twinkle, motion, onDraw, Modifier.enterRise(1, play))
         Spacer(Modifier.width(10.dp))
         HeaderButton(Icons.Rounded.Search, "搜索", IconFx.Peek, motion, onSearch, Modifier.enterRise(2, play))
         Spacer(Modifier.width(10.dp))
@@ -376,7 +376,7 @@ private enum class IconFx { Twinkle, Peek, Spin }
 
 /**
  * 页头玻璃圆钮，各有一个小动效：
- * - 抽卡：星星偶尔一闪（放大 + 轻转），按下时转一点；
+ * - 抽卡（叠放的卡片图标）：偶尔一闪（放大 + 轻转），按下时转一点；
  * - 搜索：按下时放大镜歪头凑近；
  * - 设置：每点一次齿轮弹性转 90°。
  */

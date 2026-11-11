@@ -27,6 +27,10 @@ data class Settings(
     val offline: Boolean = false,
     val proxy: String = "",
     val sort: SortMode = SortMode.MANUAL,
+    /** 首页陈列：false = 叠放，true = 多列平铺 */
+    val grid: Boolean = false,
+    /** 平铺时的列数（2～4），也可以在首页双指捏合调整 */
+    val gridColumns: Int = 2,
 )
 
 /** DataStore 封装；防截屏另存一份同步镜像，首帧前就要用 */
@@ -45,6 +49,8 @@ class Prefs(private val context: Context) {
         val offline = booleanPreferencesKey("offline")
         val proxy = stringPreferencesKey("proxy")
         val sort = stringPreferencesKey("sort")
+        val grid = booleanPreferencesKey("grid")
+        val gridCols = intPreferencesKey("grid_cols")
     }
 
     val settings: Flow<Settings> = context.store.data.map { p ->
@@ -61,6 +67,8 @@ class Prefs(private val context: Context) {
             offline = p[K.offline] ?: false,
             proxy = p[K.proxy] ?: "",
             sort = SortMode.entries.firstOrNull { it.name == p[K.sort] } ?: SortMode.MANUAL,
+            grid = p[K.grid] ?: false,
+            gridColumns = (p[K.gridCols] ?: 2).coerceIn(2, 4),
         )
     }
 
@@ -79,6 +87,8 @@ class Prefs(private val context: Context) {
     suspend fun setOffline(v: Boolean) = put(K.offline, v)
     suspend fun setProxy(v: String) = put(K.proxy, v.trim())
     suspend fun setSort(v: SortMode) = put(K.sort, v.name)
+    suspend fun setGrid(v: Boolean) = put(K.grid, v)
+    suspend fun setGridColumns(v: Int) = put(K.gridCols, v.coerceIn(2, 4))
 
     suspend fun setSecureScreen(v: Boolean) {
         mirror(context).edit().putBoolean("secure", v).apply()

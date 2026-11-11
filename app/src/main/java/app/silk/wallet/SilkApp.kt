@@ -4,7 +4,6 @@ import android.app.Application
 import app.silk.wallet.data.CardRepository
 import app.silk.wallet.data.Prefs
 import app.silk.wallet.data.SilkDatabase
-import app.silk.wallet.data.SkinStore
 import app.silk.wallet.nfc.EmvReader
 import app.silk.wallet.nfc.NfcInbox
 import app.silk.wallet.security.AppLock
@@ -32,6 +31,5 @@ class SilkApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        SkinStore.ensureLoaded(this)
     }
 }
