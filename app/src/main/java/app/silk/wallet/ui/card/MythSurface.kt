@@ -7,6 +7,7 @@ import android.graphics.Shader
 import android.os.Build
 import android.util.Log
 import androidx.annotation.DrawableRes
+import androidx.annotation.RawRes
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -67,17 +68,21 @@ internal fun Modifier.mythSurface(
     return surface.mythScrim(scene, back)
 }
 
-private object MythProgram {
-    private var source: String? = null
+internal object SiliconProgram {
+    private val sources = mutableMapOf<Int, String>()
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    fun shader(resources: Resources, scene: MythScene): RuntimeShader {
+    fun shader(resources: Resources, @RawRes resource: Int, effect: Int): RuntimeShader {
         val text = synchronized(this) {
-            source ?: resources.openRawResource(R.raw.silicon_myths).bufferedReader().use { it.readText() }
-                .also { source = it }
+            sources.getOrPut(effect) {
+                val scene = resources.openRawResource(resource).bufferedReader().use { it.readText() }
+                val portrait = resources.openRawResource(R.raw.silicon_portrait).bufferedReader().use { it.readText() }
+                // A fixed scene lets the compiler discard the other scenes' effects.
+                scene.replace("// SILICON_PORTRAIT", portrait)
+                    .replace("const int SCENE = 0;", "const int SCENE = $effect;")
+            }
         }
-        // A fixed scene lets the shader compiler discard the other scenes' effects.
-        return RuntimeShader(text.replace("const int SCENE = 0;", "const int SCENE = ${scene.effect};"))
+        return RuntimeShader(text)
     }
 }
 
@@ -93,7 +98,7 @@ private fun Modifier.animatedMyth(
     val mask = rememberTexture(scene.mask)
     val shader = remember(original, scene, mask, resources) {
         runCatching {
-            MythProgram.shader(resources, scene).apply {
+            SiliconProgram.shader(resources, R.raw.silicon_myths, scene.effect).apply {
                 setInputShader("uArt", original.asMythShader())
                 setInputBuffer("uMask", mask.asMythShader())
                 setFloatUniform("uArtSize", original.width.toFloat(), original.height.toFloat())
