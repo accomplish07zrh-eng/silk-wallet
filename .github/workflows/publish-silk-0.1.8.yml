@@ -1,0 +1,91 @@
+name: Publish Silk 0.1.8
+on:
+  push:
+    branches: [codex/silk-0.1.8-release]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+concurrency:
+  group: silk-release-v0.1.8
+
+jobs:
+  publish:
+    if: github.repository == 'accomplish07zrh-eng/silk-wallet'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      RELEASE_COMMIT: 7bc6a88ddce610fdf9b823c7d164ec6e7e484480
+      VERSION: 0.1.8
+      SIGNING_CERT: 7c12b8fcaed65d527fb2701ba27b661eccc7e5e8d2ce520a21048384180e651f
+    steps:
+      - name: Check existing release credentials
+        env:
+          KEYSTORE_B64: ${{ secrets.SILK_KEYSTORE_BASE64 || secrets.SILK_KEYSTORE_B64 || secrets.SILK_KEYSTORE }}
+          STORE_PASSWORD: ${{ secrets.SILK_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SILK_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SILK_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$KEYSTORE_B64" || -z "$STORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+            echo "::error::The Silk release signing key is not configured for this workflow."
+            exit 1
+          fi
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ env.RELEASE_COMMIT }}
+          persist-credentials: false
+      - name: Build the release APK
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          ./gradlew --no-daemon :app:assembleRelease
+      - name: Sign with the existing Silk key
+        env:
+          KEYSTORE_B64: ${{ secrets.SILK_KEYSTORE_BASE64 || secrets.SILK_KEYSTORE_B64 || secrets.SILK_KEYSTORE }}
+          STORE_PASSWORD: ${{ secrets.SILK_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SILK_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SILK_KEY_PASSWORD }}
+        run: |
+          keystore=$(mktemp "$RUNNER_TEMP/silk-key.XXXXXX")
+          trap 'rm -f -- "$keystore"' EXIT
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$keystore"
+          tools="$ANDROID_HOME/build-tools/34.0.0"
+          target="$RUNNER_TEMP/Silk-$VERSION.apk"
+          "$tools/apksigner" sign --ks "$keystore" --ks-pass env:STORE_PASSWORD \
+            --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD --out "$target" \
+            app/build/outputs/apk/release/app-release.apk
+          "$tools/apksigner" verify --print-certs "$target" |
+            awk -v cert="$SIGNING_CERT" '
+              /certificate SHA-256 digest:/ { signatures++; if ($NF == cert) matches++ }
+              END { if (signatures != 1 || matches != 1) exit 1 }'
+          "$tools/zipalign" -c 4 "$target"
+          badging=$("$tools/aapt" dump badging "$target")
+          grep -F "package: name='app.silk.wallet' versionCode='9' versionName='$VERSION'" <<< "$badging"
+      - name: Publish the signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git ls-remote --exit-code origin "refs/tags/v$VERSION" > /dev/null; then
+            echo "::error::The release tag already exists. Check it before publishing."
+            exit 1
+          else
+            status=$?
+            if [[ "$status" != 2 ]]; then exit "$status"; fi
+          fi
+          notes="$RUNNER_TEMP/silk-release-notes.md"
+          cat > "$notes" <<'NOTES'
+          - 新增十张「硅基神话」卡面。每张采用独立的人物动作、场景光效和倾斜反馈。
+          - 精修 DeepSeek 的鲸尾水光、Claude 的彩窗投影、Gemini 的双星交汇、Grok 的酒液反光，以及其余卡面的光效和循环。
+          - 卡面样式取消品质分级。Visa 卡面采用官方字标。
+          NOTES
+          gh release create "v$VERSION" "$RUNNER_TEMP/Silk-$VERSION.apk" \
+            --repo "$GITHUB_REPOSITORY" --target "$RELEASE_COMMIT" \
+            --title "Silk $VERSION" --notes-file "$notes" --latest
+          url=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,assets,url --jq 'select(.isDraft == false and any(.assets[]; .name == "Silk-0.1.8.apk")) | .url')
+          test -n "$url"
+          printf '%s\n' "$url"
