@@ -77,7 +77,7 @@ float3 stainedRays(float2 uv, float2 source, float drift) {
     return float3(bell((spread + 0.32) / 0.064), bell((spread + 0.48) / 0.093), bell((spread + 0.64) / 0.080));
 }
 
-float3 claude(float2 uv, float2 gestured, float3 color, float3 masks, float phase) {
+float3 claude(float2 uv, float3 color, float3 masks, float phase) {
     float2 p = metric(uv);
     float3 amber = float3(1.0, 0.61, 0.24);
     float3 cream = float3(1.0, 0.86, 0.57);
@@ -175,33 +175,26 @@ float3 claude(float2 uv, float2 gestured, float3 color, float3 masks, float phas
     color += cream * masks.b * embroidery * smoothstep(0.21, 0.87, color.r) * 0.37;
     if (masks.b > 0.004) {
         // The ornaments reflect the moving projection at different points in the cycle.
-        float2 pin = metric(gestured - float2(0.763, 0.146));
-        float2 brooch = metric(gestured - float2(0.639, 0.529));
+        float2 pin = metric(uv - float2(0.763, 0.146));
+        float2 brooch = metric(uv - float2(0.639, 0.529));
         float3 gleam = cream * star(rotate(pin, 0.30 + uTilt.x * 0.65), 0.015)
             * pow(0.5 + 0.5 * cos(phase * 2.0 - uTilt.x * 2.4 + 0.6), 7.0);
         gleam += amber * star(rotate(brooch, -0.33 + uTilt.y * 0.47), 0.012)
             * pow(0.5 + 0.5 * cos(phase * 2.0 - uTilt.y * 2.2 - 1.9), 6.0);
         color += gleam * masks.b * (0.48 + 0.38 * specular(color, 0.35, 0.70));
     }
-    float cuffs = portraitFalloff(gestured, float2(0.456, 0.849), float2(0.143, 0.094), 0.31);
-    float stitch = bell(sin(gestured.x * 90.0 + gestured.y * 59.0 + phase * 2.0) * 3.2);
+    float cuffs = portraitFalloff(uv, float2(0.456, 0.849), float2(0.143, 0.094), 0.31);
+    float stitch = bell(sin(uv.x * 90.0 + uv.y * 59.0 + phase * 2.0) * 3.2);
     color += cream * cuffs * stitch * specular(color, 0.48, 0.77)
         * (0.11 + 0.21 * portraitGesture(phase, 0.07));
     return color;
-}
-
-float2 pearlDrift(float phase) {
-    float lift = portraitGesture(phase, 0.93);
-    float settling = portraitFollowThrough(phase, 0.93);
-    return float2(0.004 * cos(phase * 2.0) + uTilt.x * 0.004 + uMomentum.x * 0.006,
-        0.008 * sin(phase * 2.0 - 0.7) + uTilt.y * 0.006 - lift * 0.012 + settling * 0.004);
 }
 
 float dragonBreathAge(float phase) {
     return fract(phase / TAU * 2.0 + 0.06);
 }
 
-float3 gpt(float2 uv, float2 gestured, float3 color, float3 masks, float phase) {
+float3 gpt(float2 uv, float3 color, float3 masks, float phase) {
     float3 jade = float3(0.21, 0.98, 0.71);
     float3 pearl = float3(0.73, 1.0, 0.93);
     float2 head = metric(uv - float2(0.255, 0.206));
@@ -232,11 +225,13 @@ float3 gpt(float2 uv, float2 gestured, float3 color, float3 masks, float phase) 
         color += jade * gleam * (0.15 + 0.38 * awake) * masks.g;
     }
 
-    float2 orb = metric(uv - float2(0.312, 0.535) - pearlDrift(phase));
+    // The light revolves around the pearl painted in the original.
+    float2 orb = metric(uv - float2(0.312, 0.535));
     float radius = length(orb);
     float arrival = bell((breathAge - 0.79) / 0.099) * fadeLife(breathAge);
     float breath = 0.46 + 0.34 * sin(phase * 2.0 - 0.7);
-    float3 glow = jade * bell(radius / 0.120) * (0.12 + 0.18 * breath + arrival * 0.26);
+    float hand = portraitFalloff(uv, float2(0.322, 0.607), float2(0.091, 0.061), 0.43);
+    float3 glow = jade * bell(radius / 0.120) * (0.11 + 0.16 * breath + arrival * 0.20);
     glow += pearl * bell(radius / 0.028) * (0.05 + 0.12 * breath) * masks.b;
     float plane = 0.20 + uTilt.x * 0.65 + uMomentum.x * 0.36;
     float flatten = 2.62 + uTilt.y * 0.50 + uMomentum.y * 0.25;
@@ -272,8 +267,8 @@ float3 gpt(float2 uv, float2 gestured, float3 color, float3 masks, float phase) 
             glow += pearl * star(orb - starPos, 0.0072) * (0.37 + 0.29 * sin(mote));
         }
     }
-    color += glow * (1.0 - 0.63 * smoothstep(0.58, 0.97, peak(color)));
-    float palm = portraitFalloff(gestured, float2(0.318, 0.598), float2(0.090, 0.062), 0.33);
+    color += glow * (1.0 - 0.63 * smoothstep(0.58, 0.97, peak(color))) * (1.0 - 0.81 * hand);
+    float palm = portraitFalloff(uv, float2(0.318, 0.598), float2(0.090, 0.062), 0.33);
     float reflected = 0.18 + 0.43 * arrival + 0.35 * portraitGesture(phase, 0.93);
     color += mix(jade, pearl, 0.51) * palm * specular(color, 0.29, 0.74) * reflected * 0.33;
     float breathX = uv.x - 0.122;
@@ -287,7 +282,8 @@ float3 gpt(float2 uv, float2 gestured, float3 color, float3 masks, float phase) 
         float bounds = (1.0 - smoothstep(0.33, 0.37, uv.x)) * smoothstep(0.28, 0.33, uv.y)
             * (1.0 - smoothstep(0.54, 0.58, uv.y));
         float knot = bell((breathX - 0.235 * breathAge) / 0.036) * bell(path / 0.021);
-        color += (jade * (smoke * 0.21 + edge * 0.22) + pearl * (edge * 0.13 + knot * 0.13)) * reach * bounds;
+        color += (jade * (smoke * 0.21 + edge * 0.22) + pearl * (edge * 0.13 + knot * 0.13))
+            * reach * bounds * (1.0 - 0.81 * hand);
     }
     return color;
 }
@@ -400,7 +396,7 @@ float bat(float2 p, float size, float flap) {
     return max(wings, body);
 }
 
-float3 grok(float2 uv, float2 gestured, float3 color, float3 masks, float phase) {
+float3 grok(float2 uv, float3 color, float3 masks, float phase) {
     float3 crimson = float3(0.98, 0.14, 0.085);
     float3 gold = float3(1.0, 0.65, 0.31);
     float2 moon = metric(uv - float2(0.825, 0.079));
@@ -507,28 +503,26 @@ float3 grok(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
         }
     }
 
-    // The rim follows the hand. The liquid responds to the tilt and keeps moving after it.
+    // The painted glass stays fixed. Keep the changing meniscus inside its bowl.
     if (masks.b > 0.005) {
-        float2 wine = gestured - float2(0.610, 0.409);
+        float2 glass = rotate(metric(uv - float2(0.609, 0.402)), 0.51);
+        float depth = glass.y / 0.061;
+        float width = mix(0.048, 0.023, smoothstep(-0.08, 0.91, depth));
+        float bowlShape = 1.0 - smoothstep(0.84, 1.0, abs(glass.x) / width);
+        bowlShape *= smoothstep(-0.80, -0.57, depth) * (1.0 - smoothstep(0.70, 0.90, depth)) * masks.b;
         float toast = portraitGesture(phase, 0.07);
         float settling = portraitFollowThrough(phase, 0.07);
-        float slosh = uTilt.x * 0.51 + 0.19 * sin(phase * 3.0 - wine.x * 51.0)
-            + 0.37 * sin(phase - 1.65) * toast + uMomentum.x * 0.53 + settling * 0.28;
-        float level = wine.y - wine.x * (-0.28 + slosh) - 0.0040 * sin(phase * 2.0)
-            - uTilt.y * 0.006 - uMomentum.y * 0.011;
-        float meniscus = bell(level / 0.0036);
-        float bounce = 0.55 + 0.45 * sin(phase * 2.0 + 0.5);
-        float reflectedMoon = bell((wine.x - 0.004 - uTilt.x * 0.021 - 0.010 * sin(phase) - uMomentum.x * 0.016) / 0.006);
-        float bowl = bell((level - 0.023) / 0.018);
-        float liquid = smoothstep(-0.003, 0.009, level) * (1.0 - smoothstep(0.034, 0.051, level));
-        color = mix(color, color * float3(0.64, 0.33, 0.37), liquid * masks.b * 0.45);
-        color += masks.b * (gold * meniscus * (0.38 + 0.22 * toast) + crimson * bowl * bounce * 0.49
-            + gold * reflectedMoon * bowl * (0.18 + 0.20 * bounce + 0.27 * (1.0 - dusk) * toast));
-        float wave = bell((level - 0.009 - 0.003 * cos(wine.x * 108.0 - phase * 4.0)) / 0.0039);
-        color += mix(crimson, gold, 0.31) * wave * masks.b * (0.14 + 0.21 * abs(settling) + 0.20 * abs(uMomentum.x));
-        float reflectedLine = bell((wine.x + level * 0.29 + 0.008 - uTilt.x * 0.014) / 0.0048);
-        float floorReflection = bell((level - 0.031 + 0.006 * sin(phase * 2.0)) / 0.008);
-        color += gold * reflectedLine * floorReflection * masks.b * (0.14 + 0.41 * toast);
+        float slosh = clamp(uTilt.x * 0.24 + uMomentum.x * 0.30 + settling * 0.09, -0.34, 0.34);
+        float level = uv.y - 0.408 - (uv.x - 0.609) * (-0.28 + slosh)
+            - 0.003 * sin(phase * 3.0 + glass.x * 56.0) - uTilt.y * 0.006 - uMomentum.y * 0.007;
+        float liquid = smoothstep(-0.002, 0.009, level);
+        float meniscus = bell(level / 0.0033);
+        float swell = bell((level - 0.014 - 0.003 * cos(glass.x * 90.0 - phase * 4.0)) / 0.0045);
+        float reflected = bell((glass.x - 0.012 * sin(phase * 2.0) - uTilt.x * 0.017 - uMomentum.x * 0.009) / 0.012)
+            * bell((level - 0.035) / 0.014);
+        color = mix(color, color * float3(0.80, 0.48, 0.57), liquid * bowlShape * 0.32);
+        color += bowlShape * (mix(crimson, gold, 0.39) * (meniscus * (0.27 + 0.19 * toast) + swell * 0.13)
+            + mix(crimson, gold, 0.23) * reflected * (0.24 + 0.43 * toast + 0.18 * (1.0 - dusk)));
     }
     return color;
 }
@@ -615,7 +609,7 @@ float bird(float2 p, float size, float flap) {
     return strokes * (1.0 - smoothstep(0.70, 1.05, side));
 }
 
-float3 ernie(float2 uv, float2 gestured, float3 color, float3 masks, float phase) {
+float3 ernie(float2 uv, float3 color, float3 masks, float phase) {
     float3 ink = float3(0.042, 0.16, 0.24);
     float3 white = float3(0.55, 0.81, 0.88);
     float clearance = portraitClearance(uv);
@@ -678,13 +672,13 @@ float3 ernie(float2 uv, float2 gestured, float3 color, float3 masks, float phase
         }
     }
 
-    float glass = gestured.x * 0.84 + gestured.y * 0.50 - 0.65 - 0.041 * cos(phase * 2.0)
+    float glass = uv.x * 0.84 + uv.y * 0.50 - 0.65 - 0.041 * cos(phase * 2.0)
         - uTilt.x * 0.057 - uTilt.y * 0.029;
     float shimmer = bell(glass / 0.017) + bell((glass + 0.031) / 0.012) * 0.41;
     color += white * masks.b * shimmer * specular(color, 0.27, 0.78) * 0.43;
-    float page = portraitFalloff(gestured, float2(0.335, 0.819), float2(0.110, 0.045), 0.24);
+    float page = portraitFalloff(uv, float2(0.335, 0.819), float2(0.110, 0.045), 0.24);
     float lifted = portraitGesture(phase, 0.07);
-    float paper = bell((gestured.y - 0.817 + 0.13 * (gestured.x - 0.35) + lifted * 0.013) / 0.005);
+    float paper = bell((uv.y - 0.817 + 0.13 * (uv.x - 0.35) + lifted * 0.013) / 0.005);
     color += white * page * paper * specular(color, 0.26, 0.64) * (0.08 + 0.32 * lifted);
     return color;
 }
@@ -713,7 +707,7 @@ float fanOcclusion(float2 p) {
     return edge;
 }
 
-float3 qwen(float2 uv, float2 gestured, float3 color, float3 masks, float phase) {
+float3 qwen(float2 uv, float3 color, float3 masks, float phase) {
     float3 fire = float3(1.0, 0.38, 0.082);
     float3 yellow = float3(1.0, 0.75, 0.29);
     float3 lilac = float3(0.52, 0.26, 0.83);
@@ -722,7 +716,7 @@ float3 qwen(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
     color += lilac * masks.g * sky * (0.08 + 0.075 * cos(phase + uv.x * 7.0));
     float lift = fract(phase / TAU + 0.22);
     float2 lead = leadingLantern(lift);
-    float2 fan = metric(gestured - float2(0.453, 0.499));
+    float2 fan = metric(uv - float2(0.453, 0.499));
     float paperOcclusion = fanOcclusion(fan);
     // The closest lantern lights the edges of the cloud bank as it passes through it.
     if (uv.x < 0.56 && uv.y < 0.79) {
@@ -805,7 +799,7 @@ float3 qwen(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
     return color;
 }
 
-float3 kimi(float2 uv, float2 gestured, float3 color, float3 masks, float phase) {
+float3 kimi(float2 uv, float3 color, float3 masks, float phase) {
     float3 frost = float3(0.63, 0.76, 1.0);
     float3 silver = float3(0.82, 0.90, 1.0);
     float2 p = metric(uv);
@@ -880,10 +874,10 @@ float3 kimi(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
             color += float3(0.66, 0.50, 1.0) * splitTail * life * wakeFade * (0.36 + passingLight * 0.21);
         }
     }
-    float charm = bell((gestured.y - 0.273 - 0.027 * sin(phase * 2.0) - uTilt.x * 0.011) / 0.016);
+    float charm = bell((uv.y - 0.273 - 0.027 * sin(phase * 2.0) - uTilt.x * 0.011) / 0.016);
     float tint = 0.5 + 0.5 * cos(phase + uTilt.x * 1.3);
     color += mix(frost, float3(0.80, 0.57, 1.0), tint) * masks.b * charm * 0.41;
-    float2 prism = metric(gestured - float2(0.613, 0.102));
+    float2 prism = metric(uv - float2(0.613, 0.102));
     float flash = 0.31 * pow(0.5 + 0.5 * cos(phase * 2.0 - uTilt.x * 1.8), 7.0) + 0.69 * passingLight;
     color += silver * star(rotate(prism, -0.26 + uTilt.y * 0.42), 0.026) * flash * masks.b * 0.51;
     // The scattering direction pivots from the prism pin as the card tilts.
@@ -907,7 +901,7 @@ float shoreWave(float x, float phase) {
         + uMomentum.y * 0.063 - (x - 0.28) * uMomentum.x * 0.22;
 }
 
-float3 minimax(float2 uv, float2 gestured, float3 color, float3 masks, float phase) {
+float3 minimax(float2 uv, float3 color, float3 masks, float phase) {
     float3 sea = float3(0.21, 0.87, 0.93);
     float3 sunset = float3(1.0, 0.59, 0.38);
     float band = sin(uv.y * 28.0 + uv.x * 7.0 - phase * 2.0 + uTilt.y * 2.5);
@@ -948,12 +942,13 @@ float3 minimax(float2 uv, float2 gestured, float3 color, float3 masks, float pha
         float reflection = bell((uv.x - 0.155 - uTilt.x * 0.12 - 0.047 * sin(phase)) / 0.11);
         float facets = bell(sin(uv.y * 96.0 + uv.x * 24.0 - phase * 3.0) * 4.4);
         float sunlitWater = shoal * reflection * facets * beach * specular(color, 0.26, 0.60);
-        // Refract the sand and water just under the advancing breaker.
-        if (abs(tide) < 0.090) {
+        // Keep the refraction in the open water, clear of the painted hair and ribbon.
+        float openWater = portraitFalloff(uv, float2(0.118, 0.374), float2(0.139, 0.119), 0.42);
+        if (openWater > 0.0 && abs(tide) < 0.090) {
             float lens = bell((tide + 0.012) / 0.036) * (1.0 - smoothstep(0.073, 0.090, abs(tide)));
             float lensWave = sin(uv.x * 32.0 + tide * 95.0 - phase * 3.0);
             float2 offset = float2(0.014 * lensWave + 0.011 * uMomentum.x, 0.025 * lensWave + 0.012 * uMomentum.y);
-            color = mix(color, art(uv + offset * lens), lens * beach * (0.28 + 0.14 * seaLight));
+            color = mix(color, art(uv + offset * lens), lens * beach * openWater * (0.28 + 0.14 * seaLight));
         }
         color = mix(color, sea * 0.50, beach * shoal * (0.18 + seaLight * 0.12));
         float runback = bell((tide + 0.043 + 0.025 * sin(uv.x * 9.0 - phase * 2.0)) / 0.022);
@@ -989,15 +984,16 @@ float3 minimax(float2 uv, float2 gestured, float3 color, float3 masks, float pha
             float shine = bell(length(drop - size * lightSide) / (size * 0.29));
             float life = fadeLife(age) * (1.0 - smoothstep(0.47, 0.54, uv.x));
             float lens = 1.0 - smoothstep(size * 0.63, size * 0.97, r);
-            if (i < 3 && r < size) {
+            float openWater = portraitFalloff(uv, float2(0.104, 0.39), float2(0.155, 0.112), 0.37);
+            if (i < 3 && r < size && openWater > 0.0) {
                 float2 offset = (drop / float2(ASPECT, 1.0)) * (0.85 - r / size) + float2(0.006, -0.019);
-                color = mix(color, art(uv + offset) * float3(0.82, 0.92, 0.98), lens * life * 0.59);
+                color = mix(color, art(uv + offset) * float3(0.82, 0.92, 0.98), lens * life * openWater * 0.59);
             }
             color *= 1.0 - lens * life * 0.15;
             color += mix(sea, float3(0.87, 1.0, 1.0), 0.56) * (ring * 0.24 + shine * 0.64) * life;
         }
     }
-    float2 shell = metric(gestured - float2(0.769, 0.366));
+    float2 shell = metric(uv - float2(0.769, 0.366));
     float listen = portraitGesture(phase, 0.07);
     float sweep = shell.x * 0.73 - shell.y * 0.68 - 0.032 * sin(phase * 2.0) - listen * 0.068
         - uTilt.x * 0.087 - uTilt.y * 0.058 - dot(uMomentum, float2(0.045, 0.029));
@@ -1011,87 +1007,28 @@ float3 minimax(float2 uv, float2 gestured, float3 color, float3 masks, float pha
     return color;
 }
 
-float2 motion(float2 uv, float3 masks, float phase, int scene) {
-    float wave = phase * 2.0 + uv.x * 9.0 - uv.y * 4.0;
-    float2 t = uTilt + uMomentum * 0.23;
-    float2 local;
-    float2 background = float2(0.0);
-    float2 detail = float2(0.0);
-    if (scene == 15) {
-        float airflow = wave + 1.8 * sin(uv.y * 5.3 + phase);
-        local = float2(0.019 * sin(airflow), 0.029 * cos(airflow + 0.3));
-        local += t * float2(0.017, 0.018);
-    } else if (scene == 16) {
-        local = float2(0.014 * cos(wave + 0.5), 0.026 * sin(wave - uv.x * 3.0));
-        float turn = sin(phase * 2.0 - uv.y * 10.0 + uv.x * 6.0);
-        background = float2(0.019 * turn, 0.015 * sin(phase + uv.x * 8.0)) + t * 0.025;
-        detail = -pearlDrift(phase);
-    } else if (scene == 17) {
-        float swish = sin(phase + uv.x * 5.0 - uv.y * 6.0);
-        float tip = smoothstep(0.77, 0.98, uv.x);
-        local = float2(0.021 * swish - 0.015 * tip * cos(wave), 0.026 * cos(wave - 0.4) + 0.023 * tip * swish);
-        local += t * float2(0.023, 0.012);
-    } else if (scene == 18) {
-        float gust = 0.48 + 0.52 * sin(phase * 2.0 + 1.4);
-        local = float2(gust * 0.027 * cos(wave), gust * 0.037 * sin(wave + 0.4)) + t * float2(0.015, 0.009);
-        float glass = 0.0065 * sin(phase * 3.0 + uv.x * 25.0) + (uv.x - 0.61) * t.x * 0.36 + t.y * 0.007;
-        detail.y = glass * bell((uv.y - 0.411) / 0.026);
-    } else if (scene == 19) {
-        float flick = pow(0.5 + 0.5 * sin(phase * 3.0 + uv.x * 8.0), 6.0);
-        local = float2(0.017 * sin(wave) + flick * 0.019, 0.023 * cos(wave) - flick * 0.020);
-        background = float2(0.017 * sin(phase * 2.0 + uv.y * 10.0) + t.x * 0.022, t.y * 0.009);
-        float2 bells = metric(uv - float2(0.490, 0.350));
-        float listen = portraitGesture(phase * 2.0, 0.20);
-        float swing = 0.19 * sin(phase * 4.0 + 0.7) * (0.42 + 0.58 * listen) + t.x * 0.19;
-        detail = (rotate(bells, swing) - bells) / float2(ASPECT, 1.0) * smoothstep(0.374, 0.421, uv.y);
-    } else if (scene == 20) {
-        local = float2(0.021 * sin(wave - uv.y * 2.0), 0.020 * cos(wave));
-        float distant = 1.0 - smoothstep(0.36, 0.70, uv.y);
-        background = float2(0.021 * sin(phase + uv.y * 5.0) + t.x * 0.024, 0.011 * cos(phase) + t.y * 0.015)
-            * mix(1.0, 0.49, distant);
-    } else if (scene == 21) {
-        float updraft = sin(phase * 2.0 + uv.x * 12.0 - uv.y * 7.0);
-        local = float2(0.015 * sin(wave) + 0.008 * updraft, 0.028 * cos(wave + uv.x * 3.0)) + t * 0.019;
-        background = float2(0.007 * cos(phase + uv.y * 11.0) + t.x * 0.016, 0.011 * sin(phase) + t.y * 0.016);
-    } else if (scene == 22) {
-        local = float2(0.023 * sin(wave + uv.y * 7.0), 0.024 * cos(wave));
-        local += t * float2(0.013, 0.015);
-        float2 pendant = metric(uv - float2(0.649, 0.226));
-        float2 swung = rotate(pendant, 0.19 * sin(phase * 2.0) + 0.047 * sin(phase * 3.0 + 0.5) + t.x * 0.19);
-        detail = (swung - pendant) / float2(ASPECT, 1.0) * smoothstep(0.245, 0.270, uv.y);
-    } else {
-        float ribbon = 1.0 - smoothstep(0.23, 0.43, uv.x);
-        local = float2(0.023 * sin(wave), 0.023 * cos(wave + 0.7) + 0.018 * ribbon * sin(phase * 2.0 - uv.x * 23.0));
-        background = float2(0.012 * sin(phase * 3.0 + uv.y * 29.0), 0.016 * cos(phase * 2.0 - uv.x * 7.0)) + t * 0.027;
-    }
-    return uv + (local * masks.r + background * masks.g + detail * masks.b) * portraitClearance(uv);
-}
-
 half4 main(float2 position) {
     float2 uv = position / uSize;
-    float2 posed = portraitPose(uv, uPhase, uTilt, SCENE, uFace);
-    float2 gestured = portraitAction(posed, uPhase, uTilt, SCENE);
-    float2 face = portraitFace(gestured, uPhase, uTilt, SCENE, uFace);
-    float3 masks = field(gestured);
-    float3 color = art(face + motion(gestured, masks, uPhase, SCENE) - gestured);
+    float3 masks = field(uv);
+    float3 color = art(fabricSample(uv, uPhase, uTilt, uMomentum, SCENE));
     if (SCENE == 15) {
-        color = claude(uv, gestured, color, masks, uPhase);
+        color = claude(uv, color, masks, uPhase);
     } else if (SCENE == 16) {
-        color = gpt(uv, gestured, color, masks, uPhase);
+        color = gpt(uv, color, masks, uPhase);
     } else if (SCENE == 17) {
         color = gemini(uv, color, masks, uPhase);
     } else if (SCENE == 18) {
-        color = grok(uv, gestured, color, masks, uPhase);
+        color = grok(uv, color, masks, uPhase);
     } else if (SCENE == 19) {
         color = glm(uv, color, masks, uPhase);
     } else if (SCENE == 20) {
-        color = ernie(uv, gestured, color, masks, uPhase);
+        color = ernie(uv, color, masks, uPhase);
     } else if (SCENE == 21) {
-        color = qwen(uv, gestured, color, masks, uPhase);
+        color = qwen(uv, color, masks, uPhase);
     } else if (SCENE == 22) {
-        color = kimi(uv, gestured, color, masks, uPhase);
+        color = kimi(uv, color, masks, uPhase);
     } else if (SCENE == 23) {
-        color = minimax(uv, gestured, color, masks, uPhase);
+        color = minimax(uv, color, masks, uPhase);
     }
     // Preserve detail on the brightest painted surfaces when several lights meet.
     float excess = max(peak(color) - 0.98, 0.0);

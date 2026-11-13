@@ -60,14 +60,17 @@ half4 main(float2 position) {
     float2 uv = position / uSize;
     float progress = fract(uTime / 12.0 + 0.34);
     float phase = progress * TAU;
-    float2 faceCenter = float2(0.778, 0.402);
-    float2 posed = portraitPose(uv, phase, uTilt, SCENE, faceCenter);
-    float2 gestured = portraitAction(posed, phase, uTilt, SCENE);
-    float2 artwork = portraitFace(gestured, phase, uTilt, SCENE, faceCenter);
+    float2 artwork = fabricSample(uv, phase, uTilt, uMomentum, SCENE);
+    // A continuous, sub-pixel-scale shift at the tip keeps the finger in one piece.
+    float finger = portraitFalloff(uv, float2(0.768, 0.513), float2(0.020, 0.041), 0.22);
+    if (finger > 0.0) {
+        float swing = sin(phase * 2.0 + 0.3) + uTilt.x * 0.25 + uMomentum.x * 0.13;
+        artwork += finger * float2(0.0023, -0.0007) * swing;
+    }
     half4 original = uOriginal.eval(artwork * uArtSize);
-    half4 patch = uCleanPatch.eval(gestured * uArtSize);
+    half4 patch = uCleanPatch.eval(artwork * uArtSize);
     half3 col = original.rgb * (1.0 - patch.a) + patch.rgb;
-    float3 masks = maskAt(gestured);
+    float3 masks = maskAt(artwork);
     float openWater = 1.0 - masks.r;
     float depth = smoothstep(0.01, 0.18, progress) * (1.0 - smoothstep(0.78, 0.998, progress));
 
@@ -134,37 +137,10 @@ half4 main(float2 position) {
         col += half3(0.08, 0.31, 0.42) * wakeRim * flow * (0.32 + 0.55 * flecks);
     }
 
-    // Flow only through the loose locks. Near the shoulders the hair remains anchored.
-    if (masks.g > 0.004) {
-        float left = 1.0 - smoothstep(0.54, 0.68, uv.x);
-        float right = smoothstep(0.86, 0.995, uv.x);
-        float weight = masks.g * max(left, right);
-        float wave = phase * 2.0 + gestured.x * 15.0 - gestured.y * 12.0;
-        float recoil = sin(phase - uv.y * 5.0) + 0.28 * sin(stroke - uv.y * 13.0);
-        float2 current = float2(0.014 * sin(wave) + 0.006 * sin(wave * 2.0 + 0.7) + 0.008 * recoil,
-            0.023 * cos(wave) + 0.006 * sin(phase * 3.0 + uv.y * 23.0));
-        float2 drift = uTilt * float2(0.018, 0.013) + uMomentum * float2(0.021, 0.017);
-        float2 hairUV = clamp(gestured + (current + drift) * weight, 0.0, 1.0);
-        half3 hair = uOriginal.eval(hairUV * uArtSize).rgb;
-        half4 water = uCleanPatch.eval(hairUV * uArtSize);
-        float foreground = maskAt(hairUV).r;
-        hair = mix(hair, hair * (1.0 - water.a) + water.rgb, 1.0 - foreground);
-        float strands = smoothstep(0.28, 0.68, hair.b) * foreground;
-        hair += half3(0.035, 0.10, 0.15) * strands * softLine(sin(wave + uTilt.x * 2.8) * 2.5);
-        col = mix(col, hair, weight);
-    }
-
-    // Bend the tip about a point halfway down the index finger, with the knuckle fixed.
-    if (artwork.x > 0.727 && artwork.x < 0.804 && artwork.y > 0.447 && artwork.y < 0.568) {
-        float2 hinge = float2(0.750, 0.537);
-        float2 finger = artwork - hinge;
-        float gesture = portraitGesture(phase, 0.07);
-        float angle = 0.122 * sin(phase * 2.0 + 0.3) + 0.067 * gesture + 0.029 * uTilt.x + 0.024 * uMomentum.x;
-        float2 fingerUV = hinge + float2(finger.x * cos(angle) - finger.y * sin(angle) * 0.631,
-            finger.x * sin(angle) / 0.631 + finger.y * cos(angle));
-        float fingerAlpha = maskAt(fingerUV).b;
-        col = mix(col, uOriginal.eval(fingerUV * uArtSize).rgb, fingerAlpha);
-    }
+    // The existing hair mask catches a narrow highlight as the loose lock sways.
+    float strands = masks.g * masks.r * portraitFalloff(uv, float2(0.532, 0.678), float2(0.150, 0.165), 0.28);
+    float wave = phase * 2.0 + artwork.x * 15.0 - artwork.y * 12.0 + uTilt.x * 2.8;
+    col += half3(0.031, 0.091, 0.14) * strands * softLine(sin(wave) * 2.5);
 
     // Light breaks at the surface and fans out through the open water.
     float shafts = 0.0;
@@ -217,7 +193,7 @@ half4 main(float2 position) {
             float edge = openWater * life(age) * (1.0 - smoothstep(0.63, 0.71, uv.x));
             if (near > 0.67 && r < radius) {
                 float lens = 1.0 - smoothstep(radius * 0.43, radius * 0.99, r);
-                float2 lensUV = clamp(gestured - bubble / float2(1.586, 1.0) * (0.62 + lens * 0.38), 0.0, 1.0);
+                float2 lensUV = clamp(artwork - bubble / float2(1.586, 1.0) * (0.62 + lens * 0.38), 0.0, 1.0);
                 half4 refracted = uCleanPatch.eval(lensUV * uArtSize);
                 half3 water = uOriginal.eval(lensUV * uArtSize).rgb * (1.0 - refracted.a) + refracted.rgb;
                 col = mix(col, water * half3(0.83, 1.01, 1.08), lens * edge * 0.44);

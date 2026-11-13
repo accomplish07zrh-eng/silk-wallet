@@ -1,25 +1,8 @@
-// Shared by the whale and other nine illustrated cards. All coordinates are in the
-// original artwork, so changing the card size doesn't move a hinge or an eyelid.
-const float PORTRAIT_ASPECT = 1.586;
 const float PORTRAIT_TAU = 6.28318530718;
-
-float2 portraitMetric(float2 p) {
-    return p * float2(PORTRAIT_ASPECT, 1.0);
-}
-
-float2 portraitRotate(float2 p, float angle) {
-    float s = sin(angle);
-    float c = cos(angle);
-    return float2(c * p.x - s * p.y, s * p.x + c * p.y);
-}
 
 float portraitFalloff(float2 uv, float2 center, float2 radius, float core) {
     float2 p = (uv - center) / radius;
     return 1.0 - smoothstep(core * core, 1.0, dot(p, p));
-}
-
-float portraitBreath(float phase, float offset) {
-    return 0.46 * sin(phase * 2.0 + offset) + 0.54 * sin(phase + offset - 0.8);
 }
 
 float portraitGesture(float phase, float offset) {
@@ -33,261 +16,57 @@ float portraitFollowThrough(float phase, float offset) {
     return sin((t - 0.44) * 16.0) * tail;
 }
 
-float portraitBlink(float phase, float offset) {
-    float t = fract(phase / PORTRAIT_TAU - offset + 0.5) - 0.5;
-    return smoothstep(-0.015, -0.003, t) * (1.0 - smoothstep(0.004, 0.016, t));
-}
-
-float2 portraitTurn(float2 uv, float2 pivot, float angle, float2 shift) {
-    float2 from = portraitMetric(uv - pivot - shift);
-    return portraitRotate(from, -angle) / float2(PORTRAIT_ASPECT, 1.0) + pivot - uv;
-}
-
-// Map the space between the original lid lines onto a shorter interval. Map the
-// surrounding skin back to the same outer boundary, keeping lashes and brows intact.
-float2 portraitLids(float2 uv, float2 center, float2 span, float angle, float blink) {
-    float2 d = portraitMetric(uv - center);
-    if (max(abs(d.x), abs(d.y)) > span.x + span.y) return float2(0.0);
-    float2 p = portraitRotate(d, angle) / span;
-    if (abs(p.x) >= 1.15 || abs(p.y) >= 1.64) return float2(0.0);
-    float taper = 1.0 - smoothstep(0.52, 1.15, abs(p.x));
-    float upper = -0.66;
-    float lower = 0.75;
-    float newUpper = mix(upper, 0.44, blink * taper);
-    float newLower = mix(lower, 0.48, blink * taper);
-    float mapped;
-    if (p.y < newUpper) {
-        mapped = mix(-1.64, upper, (p.y + 1.64) / (newUpper + 1.64));
-    } else if (p.y < newLower) {
-        mapped = mix(upper, lower, (p.y - newUpper) / (newLower - newUpper));
-    } else {
-        mapped = mix(lower, 1.64, (p.y - newLower) / (1.64 - newLower));
-    }
-    return portraitRotate(float2(0.0, (mapped - p.y) * span.y), -angle)
-        / float2(PORTRAIT_ASPECT, 1.0);
-}
-
-float2 portraitAction(float2 uv, float phase, float2 tilt, int scene) {
-    float2 pivot;
+// These bounds cover one loose lock, tail tip or sleeve end in each original.
+// Faces, hands and rigid props are outside the sampling region at every pose.
+float2 fabricSample(float2 uv, float phase, float2 tilt, float2 momentum, int scene) {
     float2 center;
     float2 radius;
-    float2 shift;
-    float angle;
-    float cue = portraitGesture(phase, 0.07);
-    float settle = portraitFollowThrough(phase, 0.07);
+    float2 direction;
     if (scene == 14) {
-        // The wrist stays below the shushing finger, outside its own motion mask.
-        pivot = float2(0.778, 0.661);
-        center = float2(0.758, 0.581);
-        radius = float2(0.063, 0.097);
-        angle = 0.097 * cue - 0.033 * settle + 0.047 * tilt.x;
-        shift = float2(-0.004, -0.015) * cue + float2(0.002, 0.005) * settle;
+        center = float2(0.532, 0.678);
+        radius = float2(0.122, 0.136);
+        direction = float2(0.0055, 0.0090);
     } else if (scene == 15) {
-        pivot = float2(0.558, 0.906);
-        center = float2(0.453, 0.858);
-        radius = float2(0.123, 0.103);
-        angle = -0.121 * cue + 0.024 * settle + 0.041 * tilt.x;
-        shift = float2(0.010, -0.021) * cue + float2(-0.003, 0.004) * settle;
+        center = float2(0.301, 0.635);
+        radius = float2(0.094, 0.101);
+        direction = float2(0.0055, 0.0100);
     } else if (scene == 16) {
-        // The palm rises a little after the pearl. The fingers follow as a group.
-        pivot = float2(0.400, 0.654);
-        center = float2(0.319, 0.606);
-        radius = float2(0.095, 0.084);
-        float lift = portraitGesture(phase, 0.93);
-        float follow = portraitFollowThrough(phase, 0.93);
-        angle = 0.151 * lift + 0.035 * follow + 0.051 * tilt.x;
-        shift = float2(0.009, -0.022) * lift + float2(-0.003, 0.004) * follow;
+        center = float2(0.188, 0.762);
+        radius = float2(0.142, 0.113);
+        direction = float2(0.0060, 0.0120);
     } else if (scene == 17) {
-        pivot = float2(0.237, 0.666);
-        center = float2(0.293, 0.546);
-        radius = float2(0.098, 0.152);
-        angle = 0.146 * cue + 0.039 * settle + 0.050 * tilt.x;
-        shift = float2(0.005, -0.017) * cue + float2(0.002, 0.005) * settle;
+        center = float2(0.912, 0.371);
+        radius = float2(0.084, 0.108);
+        direction = float2(0.0070, 0.0105);
     } else if (scene == 18) {
-        // Move the goblet and grip about the wrist in one transform.
-        pivot = float2(0.538, 0.503);
-        center = float2(0.599, 0.451);
-        radius = float2(0.119, 0.187);
-        angle = -0.190 * cue + 0.055 * settle + 0.083 * tilt.x;
-        shift = float2(0.006, -0.028) * cue + float2(0.004, 0.006) * settle;
+        center = float2(0.227, 0.439);
+        radius = float2(0.142, 0.119);
+        direction = float2(0.0070, 0.0130);
     } else if (scene == 19) {
-        // The tall ear banks about its base as the wind reaches it.
-        pivot = float2(0.474, 0.176);
-        center = float2(0.487, 0.090);
-        radius = float2(0.071, 0.162);
-        angle = 0.31 * portraitGesture(phase * 2.0, 0.27) - 0.067 * portraitFollowThrough(phase * 2.0, 0.27)
-            + 0.10 * tilt.x - 0.04;
-        shift = float2(0.0);
+        center = float2(0.671, 0.604);
+        radius = float2(0.117, 0.109);
+        direction = float2(0.0080, 0.0110);
     } else if (scene == 20) {
-        pivot = float2(0.400, 0.808);
-        center = float2(0.369, 0.784);
-        radius = float2(0.078, 0.068);
-        angle = 0.145 * cue + 0.055 * tilt.y;
-        shift = float2(-0.012, -0.016) * cue + float2(0.002, 0.006) * settle;
+        center = float2(0.829, 0.558);
+        radius = float2(0.110, 0.130);
+        direction = float2(0.0060, 0.0100);
     } else if (scene == 21) {
-        // The painted fan is still open, with the roll centered on the holding hand.
-        pivot = float2(0.449, 0.504);
-        center = float2(0.484, 0.434);
-        radius = float2(0.138, 0.174);
-        angle = 0.187 * cue + 0.059 * settle + 0.080 * tilt.x;
-        shift = float2(-0.004, -0.019) * cue + float2(0.003, 0.004) * settle;
+        center = float2(0.901, 0.591);
+        radius = float2(0.098, 0.128);
+        direction = float2(0.0060, 0.0120);
     } else if (scene == 22) {
-        pivot = float2(0.647, 0.218);
-        center = float2(0.648, 0.292);
-        radius = float2(0.052, 0.103);
-        angle = 0.27 * sin(phase * 2.0 - 0.6) + 0.088 * settle + 0.13 * tilt.x;
-        shift = float2(0.002, 0.006) * cue;
+        center = float2(0.838, 0.574);
+        radius = float2(0.140, 0.120);
+        direction = float2(0.0070, 0.0110);
     } else {
-        // The conch stays in the fingers while it tips toward the ear.
-        pivot = float2(0.722, 0.482);
-        center = float2(0.798, 0.378);
-        radius = float2(0.141, 0.168);
-        angle = -0.155 * cue + 0.037 * settle + 0.075 * tilt.x;
-        shift = float2(-0.014, -0.017) * cue + float2(0.003, 0.005) * settle;
+        center = float2(0.278, 0.347);
+        radius = float2(0.124, 0.094);
+        direction = float2(0.0060, 0.0100);
     }
-    float amount = portraitFalloff(uv, center, radius, 0.60);
-    if (amount <= 0.0) return uv;
-    float2 moved = uv + amount * portraitTurn(uv, pivot, angle, shift);
-    if (scene == 21) {
-        // Flex the silk across the fan ribs, keeping the base and the grip fixed.
-        float2 fan = portraitMetric(moved - float2(0.451, 0.501));
-        float bend = smoothstep(0.053, 0.142, length(fan))
-            * (1.0 - smoothstep(0.174, 0.227, length(fan))) * (1.0 - smoothstep(-0.031, 0.071, fan.y));
-        moved.x += fan.x * bend * (0.067 * cue - 0.042 * settle);
-    }
-    return moved;
-}
-
-float2 portraitGaze(float2 uv, float2 eye, float2 span, float slant, float2 look) {
-    float2 eyeSpace = portraitRotate(portraitMetric(uv - eye), slant) / span;
-    float iris = 1.0 - smoothstep(0.18, 0.69, dot(eyeSpace, eyeSpace));
-    return -look * iris;
-}
-
-float2 portraitFace(float2 uv, float phase, float2 tilt, int scene, float2 center) {
-    if (abs(uv.x - center.x) > 0.19 || abs(uv.y - center.y) > 0.27) return uv;
-    float2 firstEye;
-    float2 secondEye;
-    float2 firstSize;
-    float2 secondSize;
-    float slant;
-    if (scene == 14) {
-        firstEye = float2(0.735, 0.400);
-        secondEye = float2(0.822, 0.352);
-        firstSize = float2(0.031, 0.022);
-        secondSize = float2(0.035, 0.023);
-        slant = 0.40;
-    } else if (scene == 15) {
-        firstEye = float2(0.639, 0.310);
-        secondEye = float2(0.712, 0.297);
-        firstSize = float2(0.029, 0.015);
-        secondSize = float2(0.033, 0.018);
-        slant = 0.14;
-    } else if (scene == 16) {
-        firstEye = float2(0.560, 0.272);
-        secondEye = float2(0.612, 0.239);
-        firstSize = float2(0.022, 0.015);
-        secondSize = float2(0.027, 0.016);
-        slant = 0.37;
-    } else if (scene == 17) {
-        firstEye = float2(0.354, 0.353);
-        secondEye = float2(0.448, 0.379);
-        firstSize = float2(0.026, 0.027);
-        secondSize = float2(0.036, 0.028);
-        slant = -0.24;
-    } else if (scene == 18) {
-        firstEye = float2(0.649, 0.307);
-        secondEye = float2(0.713, 0.274);
-        firstSize = float2(0.022, 0.015);
-        secondSize = float2(0.027, 0.017);
-        slant = 0.36;
-    } else if (scene == 19) {
-        firstEye = float2(0.347, 0.373);
-        secondEye = float2(0.409, 0.350);
-        firstSize = float2(0.025, 0.017);
-        secondSize = float2(0.031, 0.017);
-        slant = 0.22;
-    } else if (scene == 20) {
-        firstEye = float2(0.491, 0.286);
-        secondEye = float2(0.535, 0.267);
-        firstSize = float2(0.015, 0.014);
-        secondSize = float2(0.024, 0.017);
-        slant = 0.21;
-    } else if (scene == 21) {
-        firstEye = float2(0.605, 0.239);
-        secondEye = float2(0.676, 0.247);
-        firstSize = float2(0.029, 0.022);
-        secondSize = float2(0.030, 0.023);
-        slant = -0.08;
-    } else if (scene == 22) {
-        firstEye = float2(0.444, 0.319);
-        secondEye = float2(0.527, 0.270);
-        firstSize = float2(0.034, 0.024);
-        secondSize = float2(0.035, 0.025);
-        slant = 0.38;
-    } else {
-        // MiniMax's eyes are already closed. Keep the smile and move the cheeks slightly.
-        float2 mouth = float2(0.636, 0.407);
-        float smile = portraitFalloff(uv, mouth, float2(0.077, 0.073), 0.39) * portraitGesture(phase, 0.12);
-        float2 lift = float2(0.002 * tilt.x, 0.008) - (uv - mouth) * float2(0.12, 0.08);
-        return uv + lift * smile;
-    }
-    float offset = fract(float(scene) * 0.173 + 0.19);
-    float blink = max(portraitBlink(phase, offset), portraitBlink(phase, fract(offset + 0.54)) * 0.87);
-    float glance = portraitGesture(phase, scene == 16 ? 0.93 : 0.07);
-    float2 look = float2(tilt.x * 0.0032 + 0.0018 * sin(phase * 2.0 + offset),
-        tilt.y * 0.0024 + 0.0010 * cos(phase + offset));
-    if (scene == 14) look += float2(-0.0037, -0.0011) * portraitGesture(phase, 0.22);
-    if (scene == 15 || scene == 20) look += float2(-0.0019, 0.0029) * glance;
-    if (scene == 16) look += float2(-0.0044, 0.0043) * glance;
-    if (scene == 17) look += float2(-0.0038, -0.0019) * portraitGesture(phase * 2.0, 0.16);
-    if (scene == 18) look += float2(-0.0029, 0.0022) * glance;
-    if (scene == 19) look += float2(0.0041, -0.0012) * portraitGesture(phase * 2.0, 0.20);
-    if (scene == 21) look += float2(-0.0028, -0.0040) * glance;
-    if (scene == 22) look += float2(0.0041, -0.0023) * portraitGesture(phase, 0.93);
-    float2 gaze = portraitGaze(uv, firstEye, firstSize, slant, look)
-        + portraitGaze(uv, secondEye, secondSize, slant, look);
-    if (scene == 17 || scene == 18) {
-        float wink = portraitBlink(phase, scene == 18 ? 0.39 : fract(offset + 0.25));
-        if (max(blink, wink) <= 0.0) return uv + gaze;
-        float close = scene == 17 ? 0.64 : 1.0;
-        return uv + portraitLids(uv, firstEye, firstSize, slant, blink * close)
-            + portraitLids(uv, secondEye, secondSize, slant, max(blink, wink) * close)
-            + gaze * (1.0 - max(blink, wink));
-    }
-    if (blink <= 0.0) return uv + gaze;
-    return uv + portraitLids(uv, firstEye, firstSize, slant, blink)
-        + portraitLids(uv, secondEye, secondSize, slant, blink) + gaze * (1.0 - blink);
-}
-
-float2 portraitPose(float2 uv, float phase, float2 tilt, int scene, float2 face) {
-    if (abs(uv.x - face.x) > 0.19 || uv.y < face.y - 0.20 || uv.y > face.y + 0.45) return uv;
-    float lean = portraitBreath(phase, float(scene) * 0.57);
-    float influence = portraitFalloff(uv, face + float2(0.0, 0.035), float2(0.155, 0.226), 0.48);
-    float angle = 0.034 * lean + tilt.x * 0.036;
-    float2 shift = float2(0.0075 * lean + tilt.x * 0.006, -0.010 * lean + tilt.y * 0.006);
-    if (scene == 15 || scene == 20) {
-        float nod = portraitGesture(phase, scene == 15 ? 0.07 : 0.16);
-        shift.y += nod * 0.006;
-        angle += nod * (scene == 15 ? 0.018 : -0.031);
-    } else if (scene == 16 || scene == 17) {
-        float turn = portraitGesture(phase, scene == 16 ? 0.93 : 0.16);
-        shift.x -= 0.004 * turn;
-        angle += 0.026 * turn;
-    } else if (scene == 18 || scene == 21) {
-        float lift = portraitGesture(phase, 0.11);
-        shift.y -= lift * 0.006;
-        angle += lift * (scene == 18 ? -0.026 : 0.031);
-    } else if (scene == 19) {
-        angle += 0.027 * portraitGesture(phase * 2.0, 0.20);
-    } else if (scene == 22 || scene == 23) {
-        float listen = portraitGesture(phase, scene == 22 ? 0.93 : 0.07);
-        shift.x += listen * (scene == 22 ? -0.005 : 0.004);
-        angle += listen * (scene == 22 ? -0.043 : 0.039);
-    }
-    // A little motion at the collar makes the head turn feel attached to the body.
-    float shoulder = portraitFalloff(uv, face + float2(0.028, 0.263), float2(0.154, 0.180), 0.40);
-    float2 chest = float2(0.0025 * lean + 0.003 * tilt.x, -0.008 * lean + 0.003 * tilt.y);
-    return uv + portraitTurn(uv, face + float2(0.018, 0.137), angle, shift) * influence
-        - chest * shoulder * (1.0 - influence * 0.72);
+    float weight = portraitFalloff(uv, center, radius, 0.26);
+    if (weight <= 0.0) return uv;
+    float wave = phase * 2.0 + float(scene) * 0.67 - (uv.x - center.x) * 5.0;
+    float2 sway = float2(sin(wave), cos(wave + 0.31));
+    float2 drag = clamp(tilt * 0.24 + momentum * 0.14, -0.38, 0.38);
+    return uv + (sway + drag) * direction * weight;
 }

@@ -662,43 +662,60 @@ half4 main(float2 fc) {
         col = env * mix(float3(1.0), min(float3(uC0.rgb) * 1.3 + 0.2, float3(1.2)), 0.18);
         col += pow(ndh, 140.0) * 0.9;
     } else if (m == 13 && photo) {
-        // 鳞缘的局部明暗决定反光方向；倾斜让薄膜虹彩在相邻鳞片间流转。
-        float2 scene = uv * 0.95 + 0.025 + uTilt * 0.018;
+        // 贴图明暗给每片鳞自己的反光方向，倾斜时扫光跨过鳞缘。
+        float cycle = 6.2831853 * fract(t / 32.0);
+        float2 scene = uv * 0.94 + 0.03 + uTilt * 0.018;
         float3 tex = textureColor(scene);
         float3 lw = float3(0.299, 0.587, 0.114);
         float lum = dot(tex, lw);
         float dx = dot(textureColor(scene + float2(0.003, 0.0)), lw) - lum;
         float dy = dot(textureColor(scene + float2(0.0, 0.004)), lw) - lum;
         float3 scaleN = normalize(float3(-dx * 11.0, -dy * 9.0, 1.0));
-        float hue = uTilt.x * 1.55 - uTilt.y * 1.15 + sin(t * 0.17) * 0.25;
+        float hue = uTilt.x * 1.55 - uTilt.y * 1.12 + sin(cycle) * 0.32;
         float3 base = max(hueShift(tex, hue), float3(0.0));
         float phase = scene.x * 0.7 - scene.y * 0.48 + dot(scaleN.xy, float2(0.85, -0.64)) + hue * 0.43;
         float3 film = 0.56 + 0.44 * cos(6.2831 * (phase + float3(0.0, 0.32, 0.63)));
-        float rim = smoothstep(0.10, 0.40, lum + length(float2(dx, dy)) * 0.42);
+        float rim = smoothstep(0.17, 0.55, lum + length(float2(dx, dy)) * 0.42);
         float glint = pow(max(dot(scaleN, H), 0.0), 24.0);
-        col = base * (0.85 + 0.22 * dot(scaleN, L));
-        col += film * (rim * (0.22 + 0.54 * glint) + edgeGlow * 0.055);
+        float sweep = 0.50 + 0.63 * sin(cycle - 0.35) + 0.47 * uTilt.x - 0.32 * uTilt.y;
+        float diagonal = scene.x * 0.63 + scene.y * 0.37;
+        float band = gaussian((diagonal - sweep) / 0.22);
+        col = base * (0.85 + 0.20 * dot(scaleN, L));
+        col += film * rim * (0.15 + 0.58 * glint);
+        col += mix(float3(1.0, 0.84, 0.52), film, 0.27) * rim * band * (0.62 + 0.25 * glint);
 
-        // 两股流金绕过鳞面，亮点沿细光带一路向前。
-        float3 gold = float3(1.0, 0.78, 0.36);
-        for (int k = 0; k < 2; k++) {
+        // 三道流金保留独立节奏；细亮边外还有一层照亮鳞面的柔光。
+        float3 gold = float3(1.0, 0.80, 0.40);
+        float2 dust = p * 94.0;
+        float2 cell = floor(dust);
+        float id = mod(dot(cell, float2(47.0, 113.0)), 509.0);
+        for (int k = 0; k < 3; k++) {
             float fk = float(k);
             float x = p.x;
-            float y = 0.32 + fk * 0.27 + 0.13 * sin(x * 2.4 + t * 0.39 + fk * 2.2)
-                + 0.042 * sin(x * 5.4 - t * 0.31 + fk) + uTilt.y * 0.11 + uTilt.x * (uv.x - 0.5) * 0.16;
-            float d = uv.y - y;
-            float core = gaussian(d / (0.0035 + 0.65 / uSize.y));
-            float halo = gaussian(d / 0.028);
-            float wave = 0.5 + 0.5 * sin(x * 5.0 - t * 1.64 + fk * 2.4);
-            float pulse = 0.28 + 0.72 * pow(wave, 3.0);
-            col += gold * (core * 0.98 + halo * 0.31) * pulse;
-            col += film * halo * rim * 0.32;
-            float2 dust = float2(x * 52.0 - t * 10.0, d * 90.0);
-            float rnd = hash(floor(dust) + fk * 17.0);
-            float2 spot = fract(dust) - 0.5;
-            col += gold * step(0.91, rnd) * gaussian(length(spot) / 0.22) * halo * (0.45 + 0.55 * wave);
+            float y = 0.50 + (fk - 1.0) * 0.26 + 0.15 * sin(x * 1.7 + cycle * 2.0 + fk * 2.1)
+                + 0.065 * sin(x * 4.1 - cycle + fk * 1.3) + uTilt.y * 0.075 + uTilt.x * (uv.x - 0.5) * 0.13;
+            float d = abs(uv.y - y);
+            float core = gaussian(d / max(0.0065, 1.35 / uSize.y));
+            float halo = exp(-d / 0.058) * 0.55 + exp(-d / 0.21) * 0.24;
+            float pulse = 0.62 + 0.38 * sin(x * 3.0 - cycle * 6.0 + fk * 1.7);
+            float3 tint = 0.50 + 0.50 * cos(6.2831853
+                * (uv.x * 0.55 + fk * 0.31 + hue * 0.15 + float3(0.0, 0.12, 0.24)) + cycle);
+            float3 ribbonLight = mix(gold, tint, 0.40);
+            col += ribbonLight * (core * 1.49 + halo * 0.67) * pulse;
+            col += mix(ribbonLight, film, 0.46) * rim * halo * (0.57 + 0.71 * pulse);
+            // Small integer products keep the same specks on CPU and GPU.
+            float seed = mod(id + fk * 53.0, 509.0);
+            float mixed = mod(seed * (seed * 13.0 + 29.0) + 71.0, 509.0);
+            float rnd = mixed / 509.0;
+            float2 offset = mod(mixed * float2(173.0, 233.0) + float2(57.0, 131.0), 509.0) / 509.0;
+            float spot = gaussian(length(fract(dust) - (offset * 0.56 + 0.22)) / 0.33);
+            float sparkle = 0.20 + 0.80 * pow(0.5 + 0.5 * sin(cycle * 13.0 + rnd * 50.0 + hue), 2.0);
+            col += gold * step(0.86, rnd) * spot * exp(-d / 0.12) * sparkle * 1.10;
         }
-        col *= 1.0 - 0.39 * smoothstep(0.59, 0.90, uv.y);
+        // 保留流金的宽光晕，只在卡号一带抑制最亮的峰值。
+        float numberZone = smoothstep(0.51, 0.62, uv.y) * (1.0 - smoothstep(0.71, 0.83, uv.y));
+        float peak = max(col.r, max(col.g, col.b));
+        col /= 1.0 + numberZone * max(peak - 0.34, 0.0) * 1.7;
     }
 
     // —— 5b. 边缘辉光 + 暗角 ——
