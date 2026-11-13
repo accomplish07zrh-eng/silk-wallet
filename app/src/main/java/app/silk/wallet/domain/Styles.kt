@@ -14,13 +14,13 @@ data class CardStylePreset(
     val shimmer: Boolean = true,
     /** 浅色卡面（如鎏金）使用深色文字 */
     val darkText: Boolean = false,
-    /** 着色器特效编号，见 FlowShader 的 uMode */
+    /** 卡面特效编号，见 CardEffect */
     val effect: Int = CardEffect.NONE,
     /** 贴图底（drawable 资源）：着色器在贴图之上叠光效，用于手绘 / 生成底图的皮肤 */
     val texture: Int? = null,
 )
 
-/** 卡面着色器特效（与 FlowShader 中 uMode 的分支一一对应） */
+/** 卡面特效。深海鲸歌使用分层贴图，其余效果由 FlowShader 绘制。 */
 object CardEffect {
     const val NONE = 0
     const val HOLO = 1
@@ -37,6 +37,7 @@ object CardEffect {
     const val CHROME = 12
     /** 贴图鳞片 + 随倾斜流转的虹彩 + 鳞缘扫光 + 游动的金色光带与星尘 */
     const val DRAGON_SILK = 13
+    const val WHALE = 14
 }
 
 object CardStyles {
@@ -73,6 +74,11 @@ object CardStyles {
 
     /** 皮肤直接可选。已保存到卡片上的 styleId 保持稳定。 */
     val skins: List<CardStylePreset> = listOf(
+        CardStylePreset(
+            "skin_whale", "深海鲸歌",
+            listOf(Color(0xFF317AA6), Color(0xFF18476D), Color(0xFF081936)),
+            effect = CardEffect.WHALE, texture = R.drawable.skin_whale,
+        ),
         CardStylePreset(
             "skin_neon", "霓虹",
             listOf(Color(0xFF23153D), Color(0xFF100E27), Color(0xFF050612)),

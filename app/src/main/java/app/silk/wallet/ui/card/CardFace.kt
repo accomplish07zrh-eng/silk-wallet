@@ -70,6 +70,7 @@ import app.silk.wallet.data.CardKind
 import app.silk.wallet.data.rememberCardGif
 import app.silk.wallet.data.rememberCardImage
 import app.silk.wallet.domain.CardBrand
+import app.silk.wallet.domain.CardEffect
 import app.silk.wallet.domain.CardMath
 import app.silk.wallet.domain.CardStylePreset
 import app.silk.wallet.ui.fx.LocalFlowClock
@@ -105,6 +106,7 @@ private fun Modifier.cardSurface(card: Card, style: CardStylePreset, back: Boole
             when {
                 photo != null -> Modifier.flowingGradient(colors, false, clock, tilt, photo = photo).photoScrim(back)
                 gif != null -> Modifier.gifLayer(gif, clock).photoScrim(back)
+                style.effect == CardEffect.WHALE && texture != null -> Modifier.whaleSurface(texture, clock, tilt, back)
                 else -> Modifier.flowingGradient(colors, style.darkText, clock, tilt, style.effect, photo = texture)
             }
         )
