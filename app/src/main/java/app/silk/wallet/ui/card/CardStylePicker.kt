@@ -1,8 +1,8 @@
 package app.silk.wallet.ui.card
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
@@ -24,16 +27,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,24 +60,19 @@ fun CardStylePicker(
     /** 非空时在最前面显示「图片」选项（从相册导入背景图） */
     onPickImage: (() -> Unit)? = null,
 ) {
-    // 皮肤全部开放，排在基础配色前面，按稀有度从高到低
-    val allSkins = remember { CardStyles.skins.sortedByDescending { it.rarity.ordinal } }
+    val styles = remember { CardStyles.skins + CardStyles.presets }
     val listState = rememberLazyListState()
-    // 打开时把已选样式滚到可见处，避免选中项藏在右侧
-    LaunchedEffect(Unit) {
-        val skinIndex = allSkins.indexOfFirst { it.id == selectedId }
-        val presetIndex = CardStyles.presets.indexOfFirst { it.id == selectedId }
-        val lead = if (onPickImage != null) 2 else 1
-        val index = when {
-            skinIndex >= 0 -> lead + skinIndex
-            presetIndex >= 0 -> lead + allSkins.size + presetIndex
-            else -> 0
+    val leadingItems = if (onPickImage != null) 2 else 1
+    LaunchedEffect(selectedId, hasImage, leadingItems) {
+        val index = if (hasImage) 0 else {
+            val styleIndex = styles.indexOfFirst { it.id == selectedId }
+            if (styleIndex >= 0) leadingItems + styleIndex else 0
         }
-        if (index > 0) listState.scrollToItem(index)
+        if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) listState.scrollToItem(index)
     }
     LazyRow(
         state = listState,
-        modifier = modifier,
+        modifier = modifier.selectableGroup(),
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -105,19 +102,7 @@ fun CardStylePicker(
                 autoIcon = true,
             )
         }
-        items(allSkins, key = { it.id }) { skin ->
-            StyleSwatch(
-                label = skin.label,
-                brush = Brush.linearGradient(skin.colors),
-                selected = !hasImage && selectedId == skin.id,
-                darkMark = skin.darkText,
-                labelColor = labelColor,
-                ringColor = ringColor,
-                onClick = { onSelect(skin.id) },
-                rarityGlow = skin.rarity.glow,
-            )
-        }
-        items(CardStyles.presets, key = { it.id }) { preset ->
+        items(styles, key = { it.id }) { preset ->
             StyleSwatch(
                 label = preset.label,
                 brush = Brush.linearGradient(preset.colors),
@@ -126,6 +111,7 @@ fun CardStylePicker(
                 labelColor = labelColor,
                 ringColor = ringColor,
                 onClick = { onSelect(preset.id) },
+                artwork = preset.texture?.let { rememberTexture(it, thumbnail = true) },
             )
         }
     }
@@ -142,12 +128,12 @@ private fun StyleSwatch(
     onClick: () -> Unit,
     autoIcon: Boolean = false,
     photoIcon: Boolean = false,
-    /** 抽卡皮肤：色块描一圈稀有度光边，右上角一颗光点 */
-    rarityGlow: Color? = null,
-    /** 限时皮肤的剩余时间 */
-    sublabel: String? = null,
+    artwork: ImageBitmap? = null,
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        modifier = Modifier.selectable(selected, role = Role.RadioButton, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         // 选中：外圈留 2dp 空隙再描 2dp 环，像 iOS 的颜色选择
         Box(
             Modifier
@@ -156,29 +142,27 @@ private fun StyleSwatch(
                 .size(width = 58.dp, height = 37.dp)
                 .clip(SwatchShape)
                 .background(brush)
-                .border(
-                    if (rarityGlow != null) 1.5.dp else 1.dp,
-                    rarityGlow?.copy(alpha = 0.9f) ?: Color.White.copy(alpha = 0.18f),
-                    SwatchShape,
-                )
-                .clickable(onClick = onClick),
+                .border(1.dp, Color.White.copy(alpha = 0.18f), SwatchShape),
             contentAlignment = Alignment.Center,
         ) {
+            if (artwork != null) {
+                Image(
+                    bitmap = artwork,
+                    contentDescription = null,
+                    modifier = Modifier.matchParentSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
             val mark = if (darkMark) Color(0xCC1A1A1A) else Color.White
             when {
-                selected -> Icon(Icons.Rounded.Check, contentDescription = null, tint = mark, modifier = Modifier.size(18.dp))
+                selected -> Icon(
+                    Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).padding(4.dp),
+                )
                 autoIcon -> Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = mark.copy(alpha = 0.85f), modifier = Modifier.size(16.dp))
                 photoIcon -> Icon(Icons.Rounded.AddPhotoAlternate, contentDescription = null, tint = mark.copy(alpha = 0.85f), modifier = Modifier.size(18.dp))
-            }
-            if (rarityGlow != null) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(rarityGlow)
-                )
             }
         }
         Spacer(Modifier.height(4.dp))
@@ -186,10 +170,7 @@ private fun StyleSwatch(
             label,
             fontSize = 11.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) ringColor else rarityGlow ?: labelColor,
+            color = if (selected) ringColor else labelColor,
         )
-        if (sublabel != null) {
-            Text(sublabel, fontSize = 9.sp, color = labelColor.copy(alpha = 0.8f))
-        }
     }
 }

@@ -105,30 +105,41 @@ private fun Modifier.cardSurface(card: Card, style: CardStylePreset, back: Boole
             when {
                 photo != null -> Modifier.flowingGradient(colors, false, clock, tilt, photo = photo).photoScrim(back)
                 gif != null -> Modifier.gifLayer(gif, clock).photoScrim(back)
-                else -> Modifier.flowingGradient(colors, style.darkText, clock, tilt, style.effect, photo = texture, tier = style.rarity.ordinal)
+                else -> Modifier.flowingGradient(colors, style.darkText, clock, tilt, style.effect, photo = texture)
             }
         )
         .gloss(light)
         .border(1.dp, edgeBrush(light), CardShape)
 }
 
-/** 皮肤贴图：解码一次后全局缓存，长边压到 1280px 以内 */
+/** 皮肤贴图与缩略图分别解码、缓存，选择器滚动时无需加载全尺寸贴图。 */
 private object TextureCache {
-    private val map = HashMap<Int, ImageBitmap>()
-    fun get(res: android.content.res.Resources, id: Int): ImageBitmap = synchronized(map) {
-        map.getOrPut(id) {
-            val src = BitmapFactory.decodeResource(res, id, BitmapFactory.Options().apply { inScaled = false })
-            val k = 1280f / maxOf(src.width, src.height)
-            val bmp = if (k < 1f) Bitmap.createScaledBitmap(src, (src.width * k).toInt(), (src.height * k).toInt(), true) else src
-            bmp.asImageBitmap()
+    private val textures = HashMap<Int, ImageBitmap>()
+    private val thumbnails = HashMap<Int, ImageBitmap>()
+
+    fun get(res: android.content.res.Resources, id: Int, thumbnail: Boolean): ImageBitmap {
+        val cache = if (thumbnail) thumbnails else textures
+        return synchronized(cache) {
+            cache.getOrPut(id) {
+                val options = BitmapFactory.Options().apply {
+                    inScaled = false
+                    inSampleSize = if (thumbnail) 4 else 1
+                }
+                val src = BitmapFactory.decodeResource(res, id, options)
+                val scale = 1280f / maxOf(src.width, src.height)
+                val bitmap = if (scale < 1f) {
+                    Bitmap.createScaledBitmap(src, (src.width * scale).toInt(), (src.height * scale).toInt(), true)
+                } else src
+                bitmap.asImageBitmap()
+            }
         }
     }
 }
 
 @Composable
-private fun rememberTexture(id: Int): ImageBitmap {
+internal fun rememberTexture(id: Int, thumbnail: Boolean = false): ImageBitmap {
     val res = LocalContext.current.resources
-    return remember(id) { TextureCache.get(res, id) }
+    return remember(res, id, thumbnail) { TextureCache.get(res, id, thumbnail) }
 }
 
 /** 有照片 / 动图时文字一律白色 */

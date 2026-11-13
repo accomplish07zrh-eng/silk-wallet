@@ -4,7 +4,7 @@ import app.silk.wallet.R
 import androidx.compose.ui.graphics.Color
 
 /**
- * 卡面视觉预设：三段渐变底色 + 着色器特效 + 稀有度。
+ * 卡面视觉预设：三段渐变底色、可选贴图与着色器特效。
  * styleId 为空时按发卡行 / 卡组织自动挑一款基础配色。
  */
 data class CardStylePreset(
@@ -14,24 +14,11 @@ data class CardStylePreset(
     val shimmer: Boolean = true,
     /** 浅色卡面（如鎏金）使用深色文字 */
     val darkText: Boolean = false,
-    /** 稀有度：基础配色为 COMMON，其余只能抽卡获得 */
-    val rarity: Rarity = Rarity.COMMON,
     /** 着色器特效编号，见 FlowShader 的 uMode */
     val effect: Int = CardEffect.NONE,
     /** 贴图底（drawable 资源）：着色器在贴图之上叠光效，用于手绘 / 生成底图的皮肤 */
     val texture: Int? = null,
 )
-
-/**
- * 抽卡稀有度：权重决定抽中概率；days 为抽到后的使用期（null 表示永久）。
- * 越稀有越短：稀有永久，史诗 3 天，传说 1 天。
- */
-enum class Rarity(val label: String, val weight: Int, val glow: Color, val days: Int?) {
-    COMMON("普通", 0, Color(0xFFBFC3CC), null),
-    RARE("稀有", 60, Color(0xFF5AA9FF), null),
-    EPIC("史诗", 30, Color(0xFFB36BFF), 3),
-    LEGENDARY("传说", 10, Color(0xFFFFC857), 1),
-}
 
 /** 卡面着色器特效（与 FlowShader 中 uMode 的分支一一对应） */
 object CardEffect {
@@ -84,88 +71,82 @@ object CardStyles {
         CardStylePreset("glacier", "冰川", listOf(Color(0xFFF1F4F8), Color(0xFFD3DCE7), Color(0xFFAAB7C8)), darkText = true),
     )
 
-    /**
-     * 抽卡皮肤：只能在「抽皮肤」里解锁，解锁后与基础配色一样出现在样式选择条里。
-     * id 以 skin_ 开头，已保存到卡片上的 styleId 永不改名。
-     */
+    /** 皮肤直接可选。已保存到卡片上的 styleId 保持稳定。 */
     val skins: List<CardStylePreset> = listOf(
-        // 稀有
-        CardStylePreset(
-            "skin_pearl_holo", "晨雾镭射",
-            listOf(Color(0xFFF5F2FA), Color(0xFFDCD6EC), Color(0xFFB9B4CF)),
-            darkText = true, rarity = Rarity.RARE, effect = CardEffect.HOLO,
-        ),
-        CardStylePreset(
-            "skin_abyss_glow", "深海荧光",
-            listOf(Color(0xFF0E5A6E), Color(0xFF07303F), Color(0xFF02121A)),
-            rarity = Rarity.RARE, effect = CardEffect.STARS,
-        ),
-        CardStylePreset(
-            "skin_rose_dawn", "玫瑰晨曦",
-            listOf(Color(0xFFFBEDEE), Color(0xFFF1D2D8), Color(0xFFDDB2BD)),
-            darkText = true, rarity = Rarity.RARE, effect = CardEffect.HOLO,
-        ),
-        CardStylePreset(
-            "skin_ink", "水墨山河",
-            listOf(Color(0xFFF4F1E9), Color(0xFFE6E1D6), Color(0xFFD2CCBE)),
-            darkText = true, rarity = Rarity.RARE, effect = CardEffect.INK,
-        ),
-        CardStylePreset(
-            "skin_celadon", "青瓷冰裂",
-            listOf(Color(0xFFB9D8C8), Color(0xFF8DBBA6), Color(0xFF5E9580)),
-            darkText = true, rarity = Rarity.RARE, effect = CardEffect.CRACKLE,
-        ),
-        // 史诗
-        CardStylePreset(
-            "skin_laser", "镭射全息",
-            listOf(Color(0xFFB7BCC8), Color(0xFF7E8494), Color(0xFF3E4250)),
-            rarity = Rarity.EPIC, effect = CardEffect.HOLO,
-        ),
-        CardStylePreset(
-            "skin_galaxy", "星河",
-            listOf(Color(0xFF2A2F7A), Color(0xFF15164A), Color(0xFF05051A)),
-            rarity = Rarity.EPIC, effect = CardEffect.STARS,
-        ),
-        CardStylePreset(
-            "skin_lava", "熔岩",
-            listOf(Color(0xFF3A1A12), Color(0xFF1C0B07), Color(0xFF080302)),
-            rarity = Rarity.EPIC, effect = CardEffect.LAVA,
-        ),
         CardStylePreset(
             "skin_neon", "霓虹",
-            listOf(Color(0xFF2A0F45), Color(0xFF130726), Color(0xFF05020D)),
-            rarity = Rarity.EPIC, effect = CardEffect.NEON,
-        ),
-        CardStylePreset(
-            "skin_sakura", "樱吹雪",
-            listOf(Color(0xFFF7C9D6), Color(0xFFE79BB2), Color(0xFFC86E8D)),
-            rarity = Rarity.EPIC, effect = CardEffect.PETALS,
-        ),
-        // 传说
-        CardStylePreset(
-            "skin_black_gold", "黑金流沙",
-            listOf(Color(0xFF2A2420), Color(0xFF120F0C), Color(0xFF050403)),
-            rarity = Rarity.LEGENDARY, effect = CardEffect.GOLD, texture = R.drawable.skin_black_gold,
-        ),
-        CardStylePreset(
-            "skin_borealis", "北境极光",
-            listOf(Color(0xFF0B2A3A), Color(0xFF07182A), Color(0xFF030812)),
-            rarity = Rarity.LEGENDARY, effect = CardEffect.AURORA, texture = R.drawable.skin_borealis,
+            listOf(Color(0xFF23153D), Color(0xFF100E27), Color(0xFF050612)),
+            effect = CardEffect.NEON, texture = R.drawable.skin_neon,
         ),
         CardStylePreset(
             "skin_dragon", "龙鳞",
             listOf(Color(0xFF2BB59A), Color(0xFF3B2A8C), Color(0xFF0A0C1A)),
-            rarity = Rarity.LEGENDARY, effect = CardEffect.DRAGON_SILK, texture = R.drawable.skin_dragon,
+            effect = CardEffect.DRAGON_SILK, texture = R.drawable.skin_dragon,
+        ),
+        CardStylePreset(
+            "skin_chrome", "液态铬",
+            listOf(Color(0xFF929FAB), Color(0xFF343C4F), Color(0xFF090A12)),
+            effect = CardEffect.CHROME, texture = R.drawable.skin_chrome,
+        ),
+        CardStylePreset(
+            "skin_sakura", "樱吹雪",
+            listOf(Color(0xFF773552), Color(0xFF2C1B36), Color(0xFF0B0B19)),
+            effect = CardEffect.PETALS, texture = R.drawable.skin_sakura,
+        ),
+        CardStylePreset(
+            "skin_lava", "熔岩",
+            listOf(Color(0xFF3A1A12), Color(0xFF1C0B07), Color(0xFF080302)),
+            effect = CardEffect.LAVA, texture = R.drawable.skin_lava,
+        ),
+        CardStylePreset(
+            "skin_borealis", "北境极光",
+            listOf(Color(0xFF0B2A3A), Color(0xFF07182A), Color(0xFF030812)),
+            effect = CardEffect.AURORA, texture = R.drawable.skin_borealis,
         ),
         CardStylePreset(
             "skin_vortex", "星璇",
             listOf(Color(0xFF1C1440), Color(0xFF0C0824), Color(0xFF03020C)),
-            rarity = Rarity.LEGENDARY, effect = CardEffect.VORTEX, texture = R.drawable.skin_vortex,
+            effect = CardEffect.VORTEX, texture = R.drawable.skin_vortex,
         ),
         CardStylePreset(
-            "skin_chrome", "液态铬",
-            listOf(Color(0xFFD8DCE4), Color(0xFF9AA0AC), Color(0xFF4A4F5A)),
-            rarity = Rarity.LEGENDARY, effect = CardEffect.CHROME, texture = R.drawable.skin_chrome,
+            "skin_black_gold", "黑金流沙",
+            listOf(Color(0xFF2A2420), Color(0xFF120F0C), Color(0xFF050403)),
+            effect = CardEffect.GOLD, texture = R.drawable.skin_black_gold,
+        ),
+        CardStylePreset(
+            "skin_laser", "镭射全息",
+            listOf(Color(0xFFB7BCC8), Color(0xFF7E8494), Color(0xFF3E4250)),
+            effect = CardEffect.HOLO,
+        ),
+        CardStylePreset(
+            "skin_galaxy", "星河",
+            listOf(Color(0xFF2A2F7A), Color(0xFF15164A), Color(0xFF05051A)),
+            effect = CardEffect.STARS,
+        ),
+        CardStylePreset(
+            "skin_pearl_holo", "晨雾镭射",
+            listOf(Color(0xFFF5F2FA), Color(0xFFDCD6EC), Color(0xFFB9B4CF)),
+            darkText = true, effect = CardEffect.HOLO,
+        ),
+        CardStylePreset(
+            "skin_abyss_glow", "深海荧光",
+            listOf(Color(0xFF0E5A6E), Color(0xFF07303F), Color(0xFF02121A)),
+            effect = CardEffect.STARS,
+        ),
+        CardStylePreset(
+            "skin_rose_dawn", "玫瑰晨曦",
+            listOf(Color(0xFFFBEDEE), Color(0xFFF1D2D8), Color(0xFFDDB2BD)),
+            darkText = true, effect = CardEffect.HOLO,
+        ),
+        CardStylePreset(
+            "skin_ink", "水墨山河",
+            listOf(Color(0xFFF4F1E9), Color(0xFFE6E1D6), Color(0xFFD2CCBE)),
+            darkText = true, effect = CardEffect.INK,
+        ),
+        CardStylePreset(
+            "skin_celadon", "青瓷冰裂",
+            listOf(Color(0xFFB9D8C8), Color(0xFF8DBBA6), Color(0xFF5E9580)),
+            darkText = true, effect = CardEffect.CRACKLE,
         ),
     )
 

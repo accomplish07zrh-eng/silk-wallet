@@ -91,10 +91,8 @@ import app.silk.wallet.domain.CardBrand
 import app.silk.wallet.domain.CardStylePreset
 import app.silk.wallet.domain.CardStyles
 import app.silk.wallet.domain.CardMath
-import app.silk.wallet.domain.Rarity
 import app.silk.wallet.ui.fx.LocalTilt
 import app.silk.wallet.ui.fx.LocalFlowClock
-import app.silk.wallet.ui.fx.flowingGradient
 import app.silk.wallet.ui.fx.rememberFlowClock
 import app.silk.wallet.ui.card.CardBack
 import app.silk.wallet.ui.card.CardFront
@@ -121,13 +119,7 @@ private data class DeckItem(val card: Card, val preset: CardStylePreset)
 
 private val Ink = Color(0xFF111114)
 
-/** 白底舞台上的光色：比稀有度原色更饱和，光束、冲击波、粒子在白底上才压得住 */
-private fun vivid(rarity: Rarity?): Color = when (rarity) {
-    Rarity.RARE -> Color(0xFF2F7BFF)
-    Rarity.EPIC -> Color(0xFF8B45FF)
-    Rarity.LEGENDARY -> Color(0xFFF2A100)
-    else -> Color(0xFFE39B12)
-}
+private val StageGlow = Color(0xFFE39B12)
 
 /**
  * 抽卡舞台（白色）：
@@ -225,7 +217,7 @@ fun DrawScreen(
 
     BackHandler(onBack = onBack)
 
-    val glow = vivid(null)
+    val glow = StageGlow
     val flowClock = rememberFlowClock()
 
     CompositionLocalProvider(LocalFlowClock provides flowClock) {
@@ -310,7 +302,7 @@ fun DrawScreen(
                 }
 
                 Sparks(progress = { reveal.value }, color = glow, center = center, modifier = Modifier.fillMaxSize())
-                Motes(progress = { reveal.value }, color = glow, center = center, rich = false, modifier = Modifier.fillMaxSize())
+                Motes(progress = { reveal.value }, color = glow, center = center, modifier = Modifier.fillMaxSize())
                 with(density) {
                     Box(
                         Modifier
@@ -564,20 +556,18 @@ private fun Sparks(progress: () -> Float, color: Color, center: Offset, modifier
     }
 }
 
-/** 光尘：揭晓后从卡片周围缓缓上浮的细小光点，传说级更多更亮 */
+/** 揭晓后从卡片周围缓缓上浮的光尘 */
 @Composable
-private fun Motes(progress: () -> Float, color: Color, center: Offset, rich: Boolean, modifier: Modifier) {
+private fun Motes(progress: () -> Float, color: Color, center: Offset, modifier: Modifier) {
     val motes = remember {
         val rnd = Random(11)
-        List(60) { floatArrayOf(rnd.nextFloat() - 0.5f, rnd.nextFloat() - 0.5f, rnd.nextFloat(), rnd.nextFloat()) }
+        List(30) { floatArrayOf(rnd.nextFloat() - 0.5f, rnd.nextFloat() - 0.5f, rnd.nextFloat(), rnd.nextFloat()) }
     }
     Canvas(modifier) {
         val p = progress()
         if (p < 0.3f || p >= 1f) return@Canvas
         val t = (p - 0.3f) / 0.7f
-        val count = if (rich) motes.size else motes.size / 2
-        for (i in 0 until count) {
-            val (ox, oy, seed, ph) = motes[i]
+        for ((ox, oy, seed, ph) in motes) {
             val x = center.x + ox * size.width * 0.95f + sin(t * 4f + ph * 9f) * 8f * density
             val y = center.y + oy * size.width * 0.7f - t * (40f + seed * 90f) * density
             val tw = 0.5f + 0.5f * sin(t * 12f + ph * 20f)
@@ -616,7 +606,7 @@ private fun SpeedStreaks(speed: () -> Float, centerY: Float, bandH: Float, modif
     }
 }
 
-/** 抽卡主按钮：黑色胶囊 + 稀有度色光晕投影 */
+/** 抽卡主按钮：黑色胶囊与舞台光晕 */
 @Composable
 private fun DrawButton(text: String, enabled: Boolean, glow: Color, onClick: () -> Unit) {
     Box(
@@ -633,7 +623,7 @@ private fun DrawButton(text: String, enabled: Boolean, glow: Color, onClick: () 
     }
 }
 
-/** 揭晓结果：稀有度徽标 + 宋体标题 + 操作 */
+/** 揭晓结果：卡片名称与复制操作 */
 @Composable
 private fun ResultPanel(
     visible: Boolean,

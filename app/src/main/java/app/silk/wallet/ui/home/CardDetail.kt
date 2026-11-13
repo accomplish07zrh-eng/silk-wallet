@@ -189,7 +189,12 @@ fun CardDetail(
             // 拖着玩：拖动量同时驱动 3D 倾斜与光泽，松手弹簧回正
             val drag = remember(card.id) { Animatable(Offset.Zero, Offset.VectorConverter) }
             val device = LocalTilt.current
-            val tilt = remember(device, drag) { derivedStateOf { device.value + Offset(drag.value.x / 420f, drag.value.y / 420f) } }
+            val tilt = if (settings.motion) remember(device, drag) {
+                derivedStateOf {
+                    val combined = device.value + drag.value / 420f
+                    Offset(combined.x.coerceIn(-1f, 1f), combined.y.coerceIn(-1f, 1f))
+                }
+            } else device
             CompositionLocalProvider(LocalTilt provides tilt) {
                 FlipCard(
                     card = card,
