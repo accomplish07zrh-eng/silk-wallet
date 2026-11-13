@@ -79,7 +79,8 @@ half4 main(float2 position) {
     float2 swimmer = (uv - origin) / (float2(0.735, 0.356) * scale);
     float2 currentUV = swimmer;
     float bend = smoothstep(0.28, 1.0, swimmer.x);
-    swimmer.y += bend * bend * sin(stroke - swimmer.x * 4.2 + 0.8) * 0.27;
+    float tailWave = stroke - swimmer.x * 4.2 + 0.8;
+    swimmer.y += bend * bend * (sin(tailWave) * 0.27 + 0.024 * sin(tailWave * 2.0));
     swimmer.y += (swimmer.x - 0.24) * (0.12 + 0.085 * cos(phase) - dive * 0.11);
     swimmer.x += (1.0 - smoothstep(0.2, 0.8, swimmer.x)) * sin(phase * 3.0 + swimmer.y * 5.0) * 0.012;
     // The long pectoral fin rolls independently. Its root stays attached to the body.
@@ -94,8 +95,11 @@ half4 main(float2 position) {
         float backlight = 1.0 - smoothstep(0.06, 0.73, swimmer.y);
         float flash = softLine((swimmer.x - 0.32 - 0.36 * cos(phase * 2.0) - uTilt.x * 0.36) / 0.20);
         float reflected = caustics(uv * 0.82, phase);
-        blue += half3(0.12, 0.37, 0.50) * whale.a * backlight * (0.26 + 0.74 * flash) *
-            (0.24 + reflected * 0.76) * (1.0 - dive * 0.56);
+        float lifted = 0.50 + 0.50 * cos(stroke - swimmer.x * 4.7);
+        float flank = softLine((swimmer.y - 0.31 - 0.052 * sin(swimmer.x * 8.1)) / 0.16);
+        blue += half3(0.12, 0.37, 0.50) * whale.a * backlight * (0.26 + 0.74 * flash)
+            * (0.24 + reflected * 0.76) * (1.0 - dive * 0.56);
+        blue += half3(0.11, 0.30, 0.38) * whale.a * flank * lifted * reflected * (1.0 - dive * 0.70);
         col = mix(col, col * (1.0 - whale.a) + blue, openWater * depth * 0.82);
     }
 
@@ -106,7 +110,7 @@ half4 main(float2 position) {
         float pastPhase = previous * TAU;
         float pastStroke = pastPhase * 3.0 - 4.2;
         float pastPitch = 0.12 + 0.085 * cos(pastPhase) - smoothstep(0.50, 0.97, previous) * 0.11;
-        float tailHeight = 0.12 - 0.27 * sin(pastStroke) - 0.71 * pastPitch;
+        float tailHeight = 0.12 - 0.27 * sin(pastStroke) - 0.024 * sin(pastStroke * 2.0) - 0.71 * pastPitch;
         float wakeY = whaleOrigin(previous).y + (tailHeight + age * 0.21) * whaleScale(previous) * 0.356
             + age * uMomentum.y * 0.066;
         float displacement = uv.y - wakeY;
@@ -124,6 +128,10 @@ half4 main(float2 position) {
         float trail = softLine((displacement + spread * 1.55) / (0.015 + age * 0.019));
         float flecks = softLine(sin(age * 63.0 + displacement * 44.0 - pastPhase * 4.0) * 3.7);
         col += half3(0.18, 0.43, 0.51) * trail * flecks * flow * smoothstep(0.05, 0.34, age) * 0.37;
+        float curl = displacement + spread * (1.46 + 0.25 * cos(pastStroke))
+            - age * 0.018 * sin(age * 19.0 - pastStroke);
+        float wakeRim = softLine(curl / (0.008 + age * 0.013)) * smoothstep(0.09, 0.40, age);
+        col += half3(0.08, 0.31, 0.42) * wakeRim * flow * (0.32 + 0.55 * flecks);
     }
 
     // Flow only through the loose locks. Near the shoulders the hair remains anchored.
@@ -132,7 +140,7 @@ half4 main(float2 position) {
         float right = smoothstep(0.86, 0.995, uv.x);
         float weight = masks.g * max(left, right);
         float wave = phase * 2.0 + gestured.x * 15.0 - gestured.y * 12.0;
-        float recoil = sin(phase - uv.y * 5.0);
+        float recoil = sin(phase - uv.y * 5.0) + 0.28 * sin(stroke - uv.y * 13.0);
         float2 current = float2(0.014 * sin(wave) + 0.006 * sin(wave * 2.0 + 0.7) + 0.008 * recoil,
             0.023 * cos(wave) + 0.006 * sin(phase * 3.0 + uv.y * 23.0));
         float2 drift = uTilt * float2(0.018, 0.013) + uMomentum * float2(0.021, 0.017);
@@ -151,7 +159,7 @@ half4 main(float2 position) {
         float2 hinge = float2(0.750, 0.537);
         float2 finger = artwork - hinge;
         float gesture = portraitGesture(phase, 0.07);
-        float angle = 0.122 * sin(phase * 2.0 + 0.3) + 0.061 * gesture + 0.029 * uTilt.x + 0.024 * uMomentum.x;
+        float angle = 0.122 * sin(phase * 2.0 + 0.3) + 0.067 * gesture + 0.029 * uTilt.x + 0.024 * uMomentum.x;
         float2 fingerUV = hinge + float2(finger.x * cos(angle) - finger.y * sin(angle) * 0.631,
             finger.x * sin(angle) / 0.631 + finger.y * cos(angle));
         float fingerAlpha = maskAt(fingerUV).b;
@@ -182,7 +190,10 @@ half4 main(float2 position) {
         float fan = softLine(refraction / 0.18) - 0.65 * softLine((refraction - 0.023) / 0.065);
         float glimmer = softLine((refraction + 0.074) / 0.043) + 0.70 * softLine((refraction - 0.068) / 0.038);
         float beam = mist * (0.32 + 0.68 * pow(0.5 + 0.5 * cos(phase * 2.0 + uv.y * 4.0), 2.0));
+        float veil = softLine((refraction + 0.22 + 0.036 * sin(uv.y * 17.0 - phase)) / 0.13);
+        float brokenLight = softLine((refraction + 0.18) / 0.050) * scatter;
         col += half3(0.033, 0.134, 0.224) * openWater * beam * (0.70 * fan + glimmer * (0.48 + 0.52 * scatter));
+        col += half3(0.028, 0.111, 0.174) * openWater * (0.57 * veil + 0.56 * brokenLight) * mist * (0.39 + 0.61 * beam);
     }
 
     // Bubbles at different depths rise at different speeds and catch the same light.
@@ -204,6 +215,13 @@ half4 main(float2 position) {
             float glare = softLine(length(bubble + radius * lightSide) / (radius * 0.33));
             float bounce = softLine(length(bubble - radius * lightSide) / (radius * 0.39));
             float edge = openWater * life(age) * (1.0 - smoothstep(0.63, 0.71, uv.x));
+            if (near > 0.67 && r < radius) {
+                float lens = 1.0 - smoothstep(radius * 0.43, radius * 0.99, r);
+                float2 lensUV = clamp(gestured - bubble / float2(1.586, 1.0) * (0.62 + lens * 0.38), 0.0, 1.0);
+                half4 refracted = uCleanPatch.eval(lensUV * uArtSize);
+                half3 water = uOriginal.eval(lensUV * uArtSize).rgb * (1.0 - refracted.a) + refracted.rgb;
+                col = mix(col, water * half3(0.83, 1.01, 1.08), lens * edge * 0.44);
+            }
             col *= 1.0 - softLine(r / (radius * 0.76)) * edge * (0.13 + near * 0.13);
             col += half3(0.38, 0.74, 0.96)
                 * (rim * (0.19 + near * 0.15) + glare * (0.42 + shafts * 0.36) + bounce * 0.18) * edge;

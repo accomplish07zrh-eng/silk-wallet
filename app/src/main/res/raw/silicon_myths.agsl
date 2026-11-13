@@ -104,7 +104,9 @@ float3 claude(float2 uv, float2 gestured, float3 color, float3 masks, float phas
     float glow = bell((splitRay + 0.117) / 0.134) * (0.33 + 0.67 * opening);
     float goldEdge = bell((splitRay + 0.061) / 0.015) * (0.41 + 0.59 * light.x);
     float roseEdge = bell((splitRay + 0.104) / 0.018) * (0.39 + 0.61 * light.y);
-    color += air * (amber * glow * 0.12 + cream * goldEdge * 0.17 + float3(0.98, 0.34, 0.23) * roseEdge * 0.13);
+    float leadwork = bell((splitRay + 0.084 + 0.012 * cos(uv.y * 15.0 - phase)) / 0.009);
+    color *= 1.0 - leadwork * air * opening * 0.19;
+    color += air * (amber * glow * 0.16 + cream * goldEdge * 0.23 + float3(0.98, 0.34, 0.23) * roseEdge * 0.18);
 
     // The projection slides across the wall. Its leadwork and the glass panes react separately.
     float2 projection = rotate(metric(uv - float2(0.237, 0.403) - uTilt * float2(0.108, 0.074)),
@@ -118,10 +120,12 @@ float3 claude(float2 uv, float2 gestured, float3 color, float3 masks, float phas
         float pane = smoothstep(0.020, 0.068, petalRadius) * (1.0 - smoothstep(edge - 0.007, edge + 0.012, petalRadius));
         float lead = bell((petalRadius - edge) / 0.0039) + 0.48 * bell((petalRadius - 0.195) / 0.0045);
         float glassGrain = 0.70 + 0.30 * sin(projection.x * 95.0 + projection.y * 120.0 + phase);
-        float illuminate = 0.40 + 0.60 * pow(0.5 + 0.5 * cos(angle - phase + uTilt.x * 1.6), 3.0);
+        float lobe = angle - phase + uTilt.x * 1.6;
+        float illuminate = 0.35 + 0.65 * pow(0.5 + 0.5 * cos(lobe), 3.0);
         float3 stained = mix(float3(0.95, 0.28, 0.17), cream, 0.45 + 0.55 * petal);
         color *= 1.0 - lead * falloff * 0.15;
         float outer = bell((petalRadius - 0.208 - 0.010 * cos(angle * 8.0)) / 0.007);
+        float scallop = bell((petalRadius - 0.223 - 0.011 * cos(angle * 8.0 + 0.7)) / 0.008);
         float reflected = 0.48 + 0.52 * max(light.x, max(light.y, light.z));
         float innerPetal = bell((petalRadius - edge * 0.58) / 0.0067) * petal;
         float lattice = bell(sin(angle * 8.0) * 7.0) * pane;
@@ -129,6 +133,7 @@ float3 claude(float2 uv, float2 gestured, float3 color, float3 masks, float phas
         color += stained * (pane * 0.27 * glassGrain + lead * 0.125 + innerPetal * 0.119
             + outer * 0.054 + bell(petalRadius / 0.034) * 0.15)
             * illuminate * falloff * reflected * bloom;
+        color += mix(cream, amber, 0.63) * scallop * falloff * bloom * (0.07 + 0.13 * pow(0.5 + 0.5 * cos(lobe - 0.65), 4.0));
         color = mix(color, color * float3(0.80, 0.61, 0.50), lattice * falloff * 0.15);
     }
 
@@ -150,8 +155,10 @@ float3 claude(float2 uv, float2 gestured, float3 color, float3 masks, float phas
             petal.x /= 0.25 + 0.75 * abs(cos(turn + 0.4));
             float2 form = petal / radius;
             form.x += 0.24 * (form.y * form.y - 0.3);
-            float shape = 1.0 - smoothstep(0.70, 1.15, length(form * float2(1.46, 0.68)));
+            float edgeDistance = length(form * float2(1.46, 0.68));
+            float shape = 1.0 - smoothstep(0.70, 1.15, edgeDistance);
             float vein = bell((form.x + 0.27 - form.y * 0.17) / 0.16) * shape;
+            float rim = shape * smoothstep(0.58, 0.87, edgeDistance);
             float backlit = 0.45 + 0.55 * smoothstep(-0.5, 0.5, form.x + form.y * 0.34);
             float glow = bell(length(delta) / (radius * 3.0));
             float3 paneLight = stainedRays(center, source, drift);
@@ -160,7 +167,8 @@ float3 claude(float2 uv, float2 gestured, float3 color, float3 masks, float phas
             float life = illumination * fadeLife(age) * (1.0 - smoothstep(0.55, 0.67, uv.x));
             color = mix(color, amber * (0.27 + backlit * 0.45), shape * life * 0.40);
             float3 petalTint = mix(amber, cream, clamp(seed * 0.55 + paneLight.x * 0.57, 0.0, 1.0));
-            color += petalTint * (shape * backlit * 0.69 + vein * 0.16 + glow * 0.09) * life;
+            color += petalTint * (shape * backlit * 0.69 + vein * 0.16 + glow * 0.09)
+                * life + cream * rim * (0.10 + 0.34 * beam) * life;
         }
     }
     float embroidery = bell((uv.y + uv.x * 0.63 - 0.71 - uTilt.x * 0.16 - uTilt.y * 0.13) / 0.032);
@@ -198,6 +206,7 @@ float3 gpt(float2 uv, float2 gestured, float3 color, float3 masks, float phase) 
     float3 pearl = float3(0.73, 1.0, 0.93);
     float2 head = metric(uv - float2(0.255, 0.206));
     float sweep = atan(head.y, head.x) - phase + uTilt.x * 1.35 - uTilt.y * 0.75;
+    float breathAge = dragonBreathAge(phase);
     float crest = pow(0.5 + 0.5 * cos(sweep), 9.0);
     float echo = pow(0.5 + 0.5 * cos(sweep - 0.74), 5.0);
     float silver = smoothstep(0.19, 0.64, peak(color));
@@ -210,6 +219,13 @@ float3 gpt(float2 uv, float2 gestured, float3 color, float3 masks, float phase) 
         float scaleSheen = bell((curve - 0.029 * sin(uv.x * 21.0 + phase)) / 0.085)
             * pow(0.5 + 0.5 * cos(travel), 5.0) * masks.g;
         color += (jade * 0.28 + pearl * 0.12) * scaleSheen * specular(color, 0.13, 0.49);
+        // Backlight moves from the mane down the overlapping scales before the breath releases.
+        float line = curve - 0.013 * cos(uv.x * 34.0 + phase) - uMomentum.y * 0.019;
+        float facets = bell(sin(uv.x * 129.0 + line * 57.0) * 3.0);
+        float pulse = bell((uv.x - 0.42 + breathAge * 0.27 - uTilt.x * 0.027) / 0.099) * fadeLife(breathAge);
+        float lit = bell(line / 0.049) * pulse * masks.g * specular(color, 0.10, 0.53);
+        lit *= (1.0 - smoothstep(0.43, 0.50, uv.x)) * (1.0 - smoothstep(0.42, 0.47, uv.y));
+        color += mix(jade, pearl, 0.55) * lit * (0.15 + 0.34 * facets);
         float2 eye = metric(uv - float2(0.197, 0.255));
         float awake = pow(0.5 + 0.5 * cos(phase * 2.0 - 0.4 + uTilt.x * 1.8), 4.0);
         float gleam = bell(length(eye * float2(0.61, 1.55)) / 0.008) + 0.34 * bell(length(eye) / 0.027);
@@ -218,7 +234,6 @@ float3 gpt(float2 uv, float2 gestured, float3 color, float3 masks, float phase) 
 
     float2 orb = metric(uv - float2(0.312, 0.535) - pearlDrift(phase));
     float radius = length(orb);
-    float breathAge = dragonBreathAge(phase);
     float arrival = bell((breathAge - 0.79) / 0.099) * fadeLife(breathAge);
     float breath = 0.46 + 0.34 * sin(phase * 2.0 - 0.7);
     float3 glow = jade * bell(radius / 0.120) * (0.12 + 0.18 * breath + arrival * 0.26);
@@ -247,7 +262,9 @@ float3 gpt(float2 uv, float2 gestured, float3 color, float3 masks, float phase) 
         float shell = 0.044 + 0.067 * smoothstep(0.65, 0.98, breathAge);
         float recoil = bell((orbitR - shell) / 0.0051) * bell((breathAge - 0.83) / 0.122) * fadeLife(breathAge);
         float outgoing = bell((orbitR - shell - 0.027) / 0.009) * bell((breathAge - 0.86) / 0.09) * fadeLife(breathAge);
-        glow += (jade * 0.37 + pearl * 0.26) * recoil * (0.30 + 0.70 * arc) + jade * outgoing * 0.18;
+        float ripples = 0.50 + 0.50 * cos(angle * 5.0 - phase * 2.0 + uMomentum.y);
+        glow += (jade * 0.37 + pearl * 0.26) * recoil * (0.30 + 0.70 * arc)
+            + mix(jade, pearl, ripples * 0.49) * outgoing * (0.19 + ripples * 0.24);
         for (int i = 0; i < 3; i++) {
             float mote = phase * 2.0 + float(i) * 2.094;
             float2 starPos = float2(0.086 * cos(mote), 0.086 * sin(mote) / flatten);
@@ -325,14 +342,19 @@ float3 gemini(float2 uv, float3 color, float3 masks, float phase) {
         float encounter = bell((blueAt - roseAt) / 0.14) * fadeLife(blueAge) * fadeLife(roseAge);
         float crossing = 0.5 * (blueAt + roseAt);
         float2 burst = p - metric(float2(mix(0.176, 0.685, crossing), twinArc(crossing, phase)));
-        float lens = bell(length(burst * float2(0.61, 1.2)) / 0.064);
+        float lens = bell(length(burst * float2(0.61, 1.2)) / 0.069);
         float spoke = star(rotate(burst, 0.39 + uMomentum.y * 0.55), 0.016);
-        filament += float3(0.91, 0.73, 1.0) * (lens * 0.34 + spoke * 0.63) * encounter;
+        float2 flash = rotate(burst, -0.12 + uTilt.y * 0.34);
+        float refraction = bell((flash.y + 0.005) / 0.007) * bell(flash.x / 0.097);
+        float refractionEcho = bell((flash.y - 0.012) / 0.008) * bell((flash.x - 0.022) / 0.077);
+        filament += (float3(0.91, 0.73, 1.0) * (lens * 0.34 + spoke * 0.63)
+            + ice * refraction * 0.23 + iris * refractionEcho * 0.17) * encounter;
         float wavefront = sin(t * 3.14159);
-        float skirt = across + wavefront * (0.053 + 0.023 * cos(phase + t * 7.0)) - uMomentum.y * 0.025;
+        float skirt = across + wavefront * (0.061 + 0.025 * cos(phase + t * 7.0)) - uMomentum.y * 0.032;
         float spectralSheet = bell(skirt / 0.034) * wavefront * (0.21 + 0.79 * max(bluePulse, pinkPulse));
         float facets = 0.51 + 0.49 * bell(sin(t * 56.0 - skirt * 54.0 + phase * 4.0) * 2.9);
-        filament += mix(iris, ice, 0.22 + 0.66 * bluePulse) * spectralSheet * facets * 0.27 * masks.g;
+        filament += mix(iris, ice, 0.22 + 0.66 * bluePulse) * spectralSheet * facets * 0.40 * masks.g
+            * (1.0 - smoothstep(0.42, 0.47, uv.y));
         color += filament * link;
     }
 
@@ -408,6 +430,11 @@ float3 grok(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
         color += mix(crimson, gold, 0.16) * (sheen * 0.29 + spread * 0.081) * glow * envelope * (0.68 + dusk * 0.58);
         float hem = bell((fold - width * 0.55) / 0.0049);
         color += mix(crimson, gold, 0.44) * hem * envelope * (0.22 + 0.23 * dusk) * (0.36 + 0.64 * glow);
+        float satin = bell((fold + width * 0.11) / (width * 0.67));
+        float grain = bell(sin(q * 78.0 + fold * 49.0 - phase * 2.0) * 2.6);
+        float goldThread = bell((fold - width * 0.76) / 0.008);
+        color += mix(crimson, gold, 0.35) * (satin * (0.12 + 0.18 * grain) + goldThread * 0.16)
+            * envelope * glow * (0.70 + dusk * 0.30);
     }
     // Gothic mullions interrupt the moving red light in the haze on the left.
     if (uv.x < 0.54 && uv.y < 0.58) {
@@ -422,7 +449,9 @@ float3 grok(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
         float lead = bell(sin(pane * 45.0) * 4.2);
         float edge = bell((diagonal + 0.08) / 0.118) * bell((spread - 0.019) / 0.142);
         color = mix(color, color * float3(0.59, 0.47, 0.55), lead * edge * reveal * 0.43);
-        color += mix(crimson, gold, 0.19) * edge * (1.0 - lead * 0.70) * reveal * (0.16 + 0.16 * (1.0 - dusk));
+        float passing = bell((diagonal - 0.04 - 0.13 * cos(phase + 0.4)) / 0.080);
+        color += mix(crimson, gold, 0.19) * edge * (1.0 - lead * 0.70) * reveal
+            * (0.16 + 0.16 * (1.0 - dusk) + 0.28 * passing);
     }
 
     float moonRadius = length(moon);
@@ -439,6 +468,8 @@ float3 grok(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
         float texture = 0.70 + 0.30 * sin(atan(moon.y, moon.x) * 21.0 + phase * 2.0);
         float ember = bell((moonRadius - 0.155) / 0.007) * (1.0 - eclipse) * (0.25 + 0.75 * dusk) * texture;
         color += mix(crimson, gold, 0.41) * (corona * 0.37 + occluder * 0.23 + ember * 0.25) * clearance * masks.g;
+        float phaseEdge = bell((shadowRadius - 0.145) / 0.013) * disc;
+        color += mix(crimson, gold, 0.32) * phaseEdge * (0.12 + 0.22 * dusk) * texture * clearance * masks.g;
 
         float age = fract(phase / TAU + 0.31);
         float2 flight = float2(0.989 - age * 0.29, 0.055 + 0.050 * age + 0.027 * sin(age * TAU));
@@ -495,6 +526,9 @@ float3 grok(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
             + gold * reflectedMoon * bowl * (0.18 + 0.20 * bounce + 0.27 * (1.0 - dusk) * toast));
         float wave = bell((level - 0.009 - 0.003 * cos(wine.x * 108.0 - phase * 4.0)) / 0.0039);
         color += mix(crimson, gold, 0.31) * wave * masks.b * (0.14 + 0.21 * abs(settling) + 0.20 * abs(uMomentum.x));
+        float reflectedLine = bell((wine.x + level * 0.29 + 0.008 - uTilt.x * 0.014) / 0.0048);
+        float floorReflection = bell((level - 0.031 + 0.006 * sin(phase * 2.0)) / 0.008);
+        color += gold * reflectedLine * floorReflection * masks.b * (0.14 + 0.41 * toast);
     }
     return color;
 }
@@ -523,6 +557,11 @@ float3 glm(float2 uv, float3 color, float3 masks, float phase) {
     float ribbonEdge = bell((gustPath - curl) / 0.015) * (0.17 + 0.43 * grainBands);
     float lowerEdge = bell((gustPath - 0.038 + curl * 0.42) / 0.016) * (0.072 + 0.24 * grainBands);
     color += mix(sand, float3(1.0, 0.88, 0.58), grainBands) * gust * (cloud + ribbonEdge + lowerEdge);
+    // The back edge of the rolling dune briefly catches the cooler moonlight.
+    float breakLine = gustPath + 0.052 - curl * 0.68 + 0.015 * sin(uv.x * 29.0 - phase * 3.0);
+    float scatter = bell((behind + 0.097) / 0.15) * bell(breakLine / 0.026);
+    float fray = bell(sin(breakLine * 149.0 + uv.x * 131.0 - phase * 5.0) * 3.3);
+    color += mix(moon, sand, 0.63) * gust * scatter * (0.14 + 0.26 * fray);
     // As the dune breaks, detached grains keep their forward momentum above the main arc.
     if (uv.x > 0.49 && uv.y > 0.31 && uv.y < 0.86) {
         float curlAge = clamp((gustAge - 0.17) / 0.83, 0.0, 1.0);
@@ -612,8 +651,11 @@ float3 ernie(float2 uv, float2 gestured, float3 color, float3 masks, float phase
         color = mix(color, color * float3(0.68, 0.85, 0.92), gap * body * 0.34);
         float rim = bell((nearFold + 0.021) / 0.014) * gap * (0.32 + 0.68 * texture);
         float ribbon = bell((nearFold + 0.036 - 0.026 * cos(near * 34.0 - phase * 2.0)) / 0.015);
+        float sunbreak = bell((ray - 0.27 - 0.08 * cos(phase - far * 5.4)) / 0.072);
+        float farRim = bell((farFold + 0.030) / 0.031) * (0.45 + 0.55 * texture);
+        color += mix(white, float3(0.95, 0.94, 0.76), 0.36) * gap * sunbreak * (0.14 + farRim * 0.42);
         color += mix(white, float3(0.88, 0.94, 0.83), 0.33)
-            * (lit * scattering * envelope * clearance * 0.39 + rim * 0.22 + ribbon * gap * 0.17);
+            * (lit * scattering * envelope * clearance * 0.39 + rim * 0.27 + ribbon * gap * 0.23);
     }
 
     if (uv.x < 0.55 && uv.y > 0.21 && uv.y < 0.46) {
@@ -622,11 +664,12 @@ float3 ernie(float2 uv, float2 gestured, float3 color, float3 masks, float phase
             float age = fract(phase / TAU + 0.11 - 0.054 * k);
             float x = 0.016 + 0.54 * age + uTilt.x * 0.037;
             float rise = smoothstep(0.12, 0.83, age);
-            float y = 0.435 - 0.174 * rise + 0.023 * sin(age * TAU + k * 0.5) + uTilt.y * 0.031;
+            float glide = 0.026 * sin(age * TAU + 0.28 * k) * smoothstep(0.24, 0.56, age);
+            float y = 0.435 - 0.174 * rise + 0.023 * sin(age * TAU + k * 0.5) + glide + uTilt.y * 0.031;
             float2 delta = metric(uv - float2(x, y));
             if (max(abs(delta.x), abs(delta.y)) > 0.036) continue;
-            float bank = -0.17 + 0.23 * sin(age * TAU) + uMomentum.x * 0.26;
-            float flap = 0.43 + 0.44 * sin(phase * 9.0 + k * 0.73) * (1.0 - rise * 0.54);
+            float bank = -0.17 + 0.27 * sin(age * TAU) + uMomentum.x * 0.26;
+            float flap = 0.43 + 0.48 * sin(phase * 9.0 + k * 0.73) * (1.0 - rise * 0.61);
             float flock = bird(rotate(delta, bank), 0.012 + 0.0030 * k, flap);
             float gap = 0.45 + 0.55 * bell((uv.x - breakX) / 0.12) * fadeLife(opening);
             float air = smoothstep(0.21, 0.24, uv.y) * (1.0 - smoothstep(0.43, 0.46, uv.y))
@@ -691,7 +734,10 @@ float3 qwen(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
         float cloudRim = bell((rim + curls) / 0.015) + 0.49 * bell((rim - curls - 0.054) / 0.021);
         float clarity = (1.0 - smoothstep(0.43, 0.56, uv.x)) * portraitClearance(uv) * (1.0 - paperOcclusion);
         color += mix(lilac, fire, 0.52) * shade * lit * clarity * 0.20;
-        color += mix(fire, yellow, 0.46) * cloudRim * lit * clarity * (0.30 + 0.10 * sin(phase * 4.0));
+        float ledge = bell((rim - curls + 0.033) / 0.009) * bell(glow.x / 0.16);
+        float pulse = 0.69 + 0.31 * sin(phase * 4.0 + uv.y * 7.0);
+        color += mix(fire, yellow, 0.46) * cloudRim * lit * clarity * (0.25 + 0.19 * pulse);
+        color += yellow * ledge * lit * clarity * (0.14 + 0.27 * pulse);
     }
     if (uv.x < 0.67 && uv.y < 0.83) {
         float clearance = portraitClearance(uv);
@@ -729,6 +775,11 @@ float3 qwen(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
             color = mix(color, fire * 0.40, form * visible * 0.67);
             color += (fire * (form * (0.68 - ribs + fibres) + halo * 0.25)
                 + yellow * (heart * form * 0.65 + brim * 0.32 + opening)) * visible;
+            if (i == 0) {
+                float coal = bell(length((paperUV - float2(flameX, 0.46)) * float2(4.8, 2.1)));
+                float edge = bell((abs(paperUV.x) - 0.59 - 0.12 * paperUV.y) / 0.087) * form;
+                color += (float3(1.0, 0.91, 0.61) * coal * 0.45 + yellow * edge * 0.19) * visible;
+            }
             float vapour = 0.53 + 0.47 * sin((uv.x - x) * 44.0 + uv.y * 31.0 - phase * 2.0);
             float cloudGlow = halo * sky * (1.0 - form) * (0.35 + 0.65 * masks.g) * (1.0 - 0.54 * paperOcclusion);
             color += yellow * cloudGlow * life * (0.19 + vapour * 0.15);
@@ -748,7 +799,7 @@ float3 qwen(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
         float reflectedAngle = clamp((lead.y - 0.38) * 3.6 + uTilt.x * 0.52 + uMomentum.x * 0.44, -0.83, 0.83);
         float lanternSweep = bell((angle - reflectedAngle) / 0.24) * reflected;
         float silk = bell((radius - 0.154 - 0.016 * sin(angle * 4.0 + phase * 2.0)) / 0.008);
-        color += yellow * paper * (sweep * 0.39 + lanternSweep * 0.91) * (0.060 + 0.43 * rib + silk * 0.14)
+        color += yellow * paper * (sweep * 0.39 + lanternSweep * 0.94) * (0.060 + 0.43 * rib + silk * 0.21)
             * portraitClearance(uv) * clearance * paperOcclusion;
     }
     return color;
@@ -792,7 +843,9 @@ float3 kimi(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
         float secondRim = bell((cloudLine + 0.038 + 0.014 * cos(drift * 2.0)) / 0.023);
         float pearl = bell((moonRadius - 0.117) / 0.081) * (0.32 + 0.68 * sin(travel) * sin(travel));
         color += mix(frost, silver, 0.48) * falloff * mistTexture * masks.g
-            * (cloudRim * (0.16 + passingLight * 0.32) + secondRim * pearl * (0.19 + passingLight * 0.25));
+            * (cloudRim * (0.19 + passingLight * 0.39) + secondRim * pearl * (0.23 + passingLight * 0.32));
+        float ring = bell((moonRadius - 0.163) / 0.010) * (0.22 + 0.78 * beam);
+        color += mix(frost, float3(0.69, 0.55, 0.96), 0.54) * ring * falloff * masks.g * (0.09 + 0.32 * passingLight);
     }
 
     if (uv.y < 0.68) {
@@ -817,13 +870,14 @@ float3 kimi(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
             float dispersal = 0.012 + train * (0.041 + age * 0.046);
             float striation = sin(train * 94.0 + k * 2.0 + across * 152.0 - phase * 2.0);
             float dust = trail * bell(wake / dispersal) * (0.27 + 0.73 * bell(striation * 3.6));
-            float splitTail = bell((wake - 0.021 - train * 0.036) / 0.0074) * trail * smoothstep(0.04, 0.14, train);
+            float spread = 0.016 + train * (0.053 + uMomentum.y * 0.022);
+            float splitTail = bell((wake - spread) / 0.0077) * trail * smoothstep(0.04, 0.14, train);
             float wakeFade = 1.0 - smoothstep(0.048, 0.059, abs(across));
             float halo = bell(length(d) / 0.025);
             float life = fadeLife(age) * vanish * clearance * (1.0 - smoothstep(0.59, 0.68, uv.y));
             color += mix(frost, silver, particleSeed(k + 3.9))
                 * (tail * 0.90 + dust * 0.44 + halo * 0.19 + star(d, 0.012) * 0.98) * life * wakeFade;
-            color += float3(0.66, 0.50, 1.0) * splitTail * life * wakeFade * 0.35;
+            color += float3(0.66, 0.50, 1.0) * splitTail * life * wakeFade * (0.36 + passingLight * 0.21);
         }
     }
     float charm = bell((gestured.y - 0.273 - 0.027 * sin(phase * 2.0) - uTilt.x * 0.011) / 0.016);
@@ -841,7 +895,9 @@ float3 kimi(float2 uv, float2 gestured, float3 color, float3 masks, float phase)
         spectrum = mix(spectrum, float3(0.54, 1.0, 0.86), bell((bands - 0.54) / 0.23) * 0.47);
         float split = bell(fan / (0.012 + reach * 0.12)) * smoothstep(0.0, 0.019, reach)
             * (1.0 - smoothstep(0.122, 0.21, reach)) * (1.0 - smoothstep(0.143, 0.18, uv.y));
-        color += spectrum * split * portraitClearance(uv) * flash * 0.34;
+        float refraction = bell(sin(bands * 15.7 - phase * 2.0) * 2.4);
+        float headroom = 1.0 - smoothstep(0.735, 0.779, uv.x);
+        color += spectrum * split * portraitClearance(uv) * flash * (0.32 + 0.19 * refraction) * headroom;
     }
     return color;
 }
@@ -886,6 +942,8 @@ float3 minimax(float2 uv, float2 gestured, float3 color, float3 masks, float pha
         float branches = sin(uv.x * 84.0 + cos(uv.x * 56.0) * 0.64 - phase * 2.0);
         float foam = bell((curl + branches * 0.018) / 0.0046) * lace
             * (0.52 + 0.48 * sin(uv.x * 19.0 + phase));
+        float fold = curl - 0.023 - 0.009 * cos(uv.x * 29.0 - phase * 2.0);
+        float laceBack = bell(fold / 0.0069) * (0.27 + 0.73 * lace) * (0.51 + 0.49 * seaLight);
         float shoal = bell((tide + 0.031) / 0.069);
         float reflection = bell((uv.x - 0.155 - uTilt.x * 0.12 - 0.047 * sin(phase)) / 0.11);
         float facets = bell(sin(uv.y * 96.0 + uv.x * 24.0 - phase * 3.0) * 4.4);
@@ -894,14 +952,14 @@ float3 minimax(float2 uv, float2 gestured, float3 color, float3 masks, float pha
         if (abs(tide) < 0.090) {
             float lens = bell((tide + 0.012) / 0.036) * (1.0 - smoothstep(0.073, 0.090, abs(tide)));
             float lensWave = sin(uv.x * 32.0 + tide * 95.0 - phase * 3.0);
-            float2 offset = float2(0.012 * lensWave + 0.009 * uMomentum.x, 0.023 * lensWave + 0.010 * uMomentum.y);
-            color = mix(color, art(uv + offset * lens), lens * beach * 0.33);
+            float2 offset = float2(0.014 * lensWave + 0.011 * uMomentum.x, 0.025 * lensWave + 0.012 * uMomentum.y);
+            color = mix(color, art(uv + offset * lens), lens * beach * (0.28 + 0.14 * seaLight));
         }
         color = mix(color, sea * 0.50, beach * shoal * (0.18 + seaLight * 0.12));
         float runback = bell((tide + 0.043 + 0.025 * sin(uv.x * 9.0 - phase * 2.0)) / 0.022);
         float recede = 0.35 + 0.65 * cos(phase + uv.x * 7.8) * cos(phase + uv.x * 7.8);
         color += mix(sea, float3(1.0, 0.91, 0.78), seaLight)
-            * (spume + foam * 0.27 + runback * lace * recede * 0.13) * beach;
+            * (spume + foam * 0.28 + laceBack * 0.18 + runback * lace * recede * 0.13) * beach;
         float scatter = bell((tide + 0.066 + 0.014 * cos(uv.x * 28.0 + phase * 2.0)) / 0.022);
         float amberFlecks = bell(sin(uv.x * 142.0 + tide * 83.0 - phase * 4.0) * 4.1);
         color += mix(sunset, float3(1.0, 0.89, 0.71), seaLight)
@@ -946,8 +1004,10 @@ float3 minimax(float2 uv, float2 gestured, float3 color, float3 masks, float pha
     float facet = 0.34 + 0.66 * pow(0.5 + 0.5 * sin(shell.x * 86.0 + shell.y * 35.0 + phase), 3.0);
     float3 nacre = mix(float3(1.0, 0.91, 0.82), sea, 0.23 + 0.21 * sin(shell.x * 25.0 + phase + uTilt.x * 2.8));
     float ridges = bell(sin(shell.x * 82.0 - shell.y * 60.0 + 1.3 * sin(shell.y * 33.0)) * 3.0);
+    float glint = bell((sweep + 0.020 + 0.013 * cos(shell.x * 35.0 - phase * 2.0)) / 0.010);
     float pearl = bell(sweep / 0.024) * facet + bell((sweep - 0.031) / 0.009) * (0.24 + 0.34 * ridges);
     color += mix(sunset, nacre, 0.78) * pearl * masks.b * specular(color, 0.31, 0.73) * (0.48 + listen * 0.19);
+    color += mix(nacre, float3(1.0, 0.96, 0.88), 0.62) * glint * ridges * masks.b * specular(color, 0.43, 0.78) * 0.24;
     return color;
 }
 
