@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.draw.drawWithContent
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -66,6 +68,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.silk.wallet.R
 import app.silk.wallet.data.Card
 import app.silk.wallet.data.CardKind
 import app.silk.wallet.data.rememberCardGif
@@ -101,16 +104,19 @@ private fun Modifier.cardSurface(card: Card, style: CardStylePreset, back: Boole
     val light = style.darkText && photo == null && gif == null
     val texture = if (photo == null && gif == null) style.texture?.let { rememberTexture(it) } else null
     val colors = if (back) style.colors.reversed() else style.colors
+    val paintedMyth = style.series == CardStyleSeries.SILICON_MYTHS && texture != null
     return this
         .clip(CardShape)
-        .laminate(tilt, light)
+        .then(if (paintedMyth) Modifier else Modifier.laminate(tilt, light))
         .then(
             when {
                 photo != null -> Modifier.flowingGradient(colors, false, clock, tilt, photo = photo).photoScrim(back)
                 gif != null -> Modifier.gifLayer(gif, clock).photoScrim(back)
-                style.effect == CardEffect.WHALE && texture != null -> Modifier.whaleSurface(texture, clock, tilt, back)
-                style.series == CardStyleSeries.SILICON_MYTHS && texture != null ->
+                paintedMyth -> if (style.effect == CardEffect.WHALE) {
+                    Modifier.whaleSurface(texture, clock, tilt, back)
+                } else {
                     Modifier.mythSurface(texture, style.effect, clock, tilt, back)
+                }
                 else -> Modifier.flowingGradient(colors, style.darkText, clock, tilt, style.effect, photo = texture)
             }
         )
@@ -217,6 +223,19 @@ private fun Modifier.photoScrim(back: Boolean) = drawBehind {
     )
 }
 
+/** Keep the white wordmark legible as bright parts of the illustration pass behind it. */
+private fun Modifier.visaCornerShade() = drawWithCache {
+    val ink = Color(0xFF08101D)
+    val shade = Brush.radialGradient(
+        0f to ink.copy(alpha = 0.54f),
+        0.48f to ink.copy(alpha = 0.42f),
+        1f to Color.Transparent,
+        center = Offset(size.width - 37.dp.toPx(), 32.dp.toPx()),
+        radius = 56.dp.toPx(),
+    )
+    onDrawBehind { drawRect(shade) }
+}
+
 /** 动图按卡面比例居中裁切；读时钟让每帧重绘，动图逐帧推进 */
 private fun Modifier.gifLayer(gif: Drawable, clock: State<Float>?) = drawBehind {
     clock?.value
@@ -256,7 +275,15 @@ fun CardFront(
 ) {
     val ink = inkFor(card, style)
     val brand = CardBrand.of(card.brand)
-    Box(modifier.cardSurface(card, style, back = false, live = live).padding(horizontal = 22.dp, vertical = 20.dp)) {
+    val visa = brand == CardBrand.VISA
+    val cornerShade = if (visa && style.series == CardStyleSeries.SILICON_MYTHS) {
+        Modifier.visaCornerShade()
+    } else Modifier
+    Box(
+        modifier.cardSurface(card, style, back = false, live = live)
+            .then(cornerShade)
+            .padding(horizontal = 22.dp, vertical = 20.dp),
+    ) {
         Column(Modifier.fillMaxSize()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -273,11 +300,13 @@ fun CardFront(
                     badge()
                     Spacer(Modifier.width(8.dp))
                 }
-                BrandMark(brand, ink)
+                if (!visa) BrandMark(brand, ink)
                 if (trailing != null) {
-                    Spacer(Modifier.width(10.dp))
+                    if (!visa && brand != CardBrand.UNKNOWN) Spacer(Modifier.width(10.dp))
                     trailing()
+                    if (visa) Spacer(Modifier.width(10.dp))
                 }
+                if (visa) BrandMark(brand, ink, Modifier.offset(x = 5.dp))
             }
             Spacer(Modifier.weight(1f))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -511,9 +540,9 @@ private fun Contactless(color: Color) {
     }
 }
 
-/** 卡组织标识（仅作识别用途的简化图形） */
+/** 卡组织标识，用于识别卡片所属网络。 */
 @Composable
-fun BrandMark(brand: CardBrand, ink: Color) {
+fun BrandMark(brand: CardBrand, ink: Color, modifier: Modifier = Modifier) {
     when (brand) {
         CardBrand.MASTERCARD -> Row {
             Box(Modifier.size(24.dp).clip(CircleShape).background(Color(0xEBEB001B)))
@@ -523,7 +552,13 @@ fun BrandMark(brand: CardBrand, ink: Color) {
             Box(Modifier.size(22.dp).clip(CircleShape).background(Color(0xEB0099DF)))
             Box(Modifier.offset(x = (-9).dp).size(22.dp).clip(CircleShape).background(Color(0xD9ED0006)))
         }
-        CardBrand.VISA -> Text("VISA", color = ink, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, fontStyle = FontStyle.Italic, letterSpacing = 1.sp)
+        CardBrand.VISA -> Icon(
+            // Visa 官方媒体素材字标，保留原始比例。
+            painter = painterResource(R.drawable.visa_brand_mark),
+            contentDescription = "Visa",
+            tint = if (ink == Color.White) Color.White else Color(0xFF1434CB),
+            modifier = modifier.size(width = 40.dp, height = 13.dp),
+        )
         CardBrand.UNIONPAY -> UnionPayMark()
         CardBrand.AMEX -> Text(
             "AMEX",

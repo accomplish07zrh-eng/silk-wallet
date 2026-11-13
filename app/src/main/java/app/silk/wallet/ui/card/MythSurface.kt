@@ -71,12 +71,13 @@ private object MythProgram {
     private var source: String? = null
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    fun shader(resources: Resources): RuntimeShader {
+    fun shader(resources: Resources, scene: MythScene): RuntimeShader {
         val text = synchronized(this) {
             source ?: resources.openRawResource(R.raw.silicon_myths).bufferedReader().use { it.readText() }
                 .also { source = it }
         }
-        return RuntimeShader(text)
+        // A fixed scene lets the shader compiler discard the other scenes' effects.
+        return RuntimeShader(text.replace("const int SCENE = 0;", "const int SCENE = ${scene.effect};"))
     }
 }
 
@@ -92,12 +93,11 @@ private fun Modifier.animatedMyth(
     val mask = rememberTexture(scene.mask)
     val shader = remember(original, scene, mask, resources) {
         runCatching {
-            MythProgram.shader(resources).apply {
+            MythProgram.shader(resources, scene).apply {
                 setInputShader("uArt", original.asMythShader())
                 setInputBuffer("uMask", mask.asMythShader())
                 setFloatUniform("uArtSize", original.width.toFloat(), original.height.toFloat())
                 setFloatUniform("uMaskSize", mask.width.toFloat(), mask.height.toFloat())
-                setFloatUniform("uScene", scene.effect.toFloat())
                 setFloatUniform("uFace", scene.faceX, scene.faceY)
             }
         }.onFailure { Log.e("Silk", "硅基神话着色器初始化失败", it) }.getOrNull()
