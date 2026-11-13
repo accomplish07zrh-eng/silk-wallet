@@ -174,15 +174,20 @@ private fun edgeBrush(light: Boolean) = Brush.verticalGradient(
 )
 
 /** 左上一团柔光 + 底部轻压暗，给平面渐变一点厚度 */
-private fun Modifier.gloss(light: Boolean) = drawBehind {
-    drawRect(
-        Brush.radialGradient(
-            listOf(Color.White.copy(alpha = if (light) 0.26f else 0.14f), Color.Transparent),
-            center = Offset(size.width * 0.15f, -size.height * 0.2f),
-            radius = size.width * 0.95f,
-        )
+private fun Modifier.gloss(light: Boolean) = drawWithCache {
+    val highlight = Brush.radialGradient(
+        listOf(Color.White.copy(alpha = if (light) 0.26f else 0.14f), Color.Transparent),
+        center = Offset(size.width * 0.15f, -size.height * 0.2f),
+        radius = size.width * 0.95f,
     )
-    drawRect(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = if (light) 0.05f else 0.16f)))
+    val bottom = Brush.verticalGradient(
+        0.55f to Color.Transparent,
+        1f to Color.Black.copy(alpha = if (light) 0.05f else 0.16f),
+    )
+    onDrawBehind {
+        drawRect(highlight)
+        drawRect(bottom)
+    }
 }
 
 /**
