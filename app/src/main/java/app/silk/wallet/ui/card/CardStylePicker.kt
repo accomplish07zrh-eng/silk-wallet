@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +64,12 @@ fun CardStylePicker(
     val styles = remember { CardStyles.skins + CardStyles.presets }
     val listState = rememberLazyListState()
     val leadingItems = if (onPickImage != null) 2 else 1
+    val series = styles.firstNotNullOfOrNull { it.series }
+    val seriesStart = leadingItems + styles.indexOfFirst { it.series == series }
+    val seriesEnd = leadingItems + styles.indexOfLast { it.series == series }
+    val activeSeries = remember(listState, seriesStart, seriesEnd) {
+        derivedStateOf { listState.layoutInfo.visibleItemsInfo.any { it.index in seriesStart..seriesEnd } }
+    }
     LaunchedEffect(selectedId, hasImage, leadingItems) {
         val index = if (hasImage) 0 else {
             val styleIndex = styles.indexOfFirst { it.id == selectedId }
@@ -70,49 +77,54 @@ fun CardStylePicker(
         }
         if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) listState.scrollToItem(index)
     }
-    LazyRow(
-        state = listState,
-        modifier = modifier.selectableGroup(),
-        contentPadding = contentPadding,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        if (onPickImage != null) {
-            item(key = "image") {
+    Column(modifier) {
+        if (series != null && activeSeries.value) {
+            Text(series.label, color = labelColor, fontSize = 11.sp, modifier = Modifier.padding(bottom = 4.dp))
+        }
+        LazyRow(
+            state = listState,
+            modifier = Modifier.selectableGroup(),
+            contentPadding = contentPadding,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (onPickImage != null) {
+                item(key = "image") {
+                    StyleSwatch(
+                        label = if (hasImage) "更换图片" else "图片",
+                        brush = Brush.linearGradient(listOf(Color(0xFFDCE3F5), Color(0xFFB9A6D8), Color(0xFFE9C1AE))),
+                        selected = hasImage,
+                        darkMark = true,
+                        labelColor = labelColor,
+                        ringColor = ringColor,
+                        onClick = onPickImage,
+                        photoIcon = true,
+                    )
+                }
+            }
+            item(key = "auto") {
                 StyleSwatch(
-                    label = if (hasImage) "更换图片" else "图片",
-                    brush = Brush.linearGradient(listOf(Color(0xFFDCE3F5), Color(0xFFB9A6D8), Color(0xFFE9C1AE))),
-                    selected = hasImage,
-                    darkMark = true,
+                    label = "自动",
+                    brush = Brush.linearGradient(listOf(Color(0xFF8E9099), Color(0xFF4A4C54))),
+                    selected = !hasImage && selectedId == null,
+                    darkMark = false,
                     labelColor = labelColor,
                     ringColor = ringColor,
-                    onClick = onPickImage,
-                    photoIcon = true,
+                    onClick = { onSelect(null) },
+                    autoIcon = true,
                 )
             }
-        }
-        item(key = "auto") {
-            StyleSwatch(
-                label = "自动",
-                brush = Brush.linearGradient(listOf(Color(0xFF8E9099), Color(0xFF4A4C54))),
-                selected = !hasImage && selectedId == null,
-                darkMark = false,
-                labelColor = labelColor,
-                ringColor = ringColor,
-                onClick = { onSelect(null) },
-                autoIcon = true,
-            )
-        }
-        items(styles, key = { it.id }) { preset ->
-            StyleSwatch(
-                label = preset.label,
-                brush = Brush.linearGradient(preset.colors),
-                selected = !hasImage && selectedId == preset.id,
-                darkMark = preset.darkText,
-                labelColor = labelColor,
-                ringColor = ringColor,
-                onClick = { onSelect(preset.id) },
-                artwork = preset.texture?.let { rememberTexture(it, thumbnail = true) },
-            )
+            items(styles, key = { it.id }) { preset ->
+                StyleSwatch(
+                    label = preset.seriesLabel ?: preset.label,
+                    brush = Brush.linearGradient(preset.colors),
+                    selected = !hasImage && selectedId == preset.id,
+                    darkMark = preset.darkText,
+                    labelColor = labelColor,
+                    ringColor = ringColor,
+                    onClick = { onSelect(preset.id) },
+                    artwork = preset.texture?.let { rememberTexture(it, thumbnail = true) },
+                )
+            }
         }
     }
 }

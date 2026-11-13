@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import android.graphics.BitmapFactory
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import android.util.LruCache
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
@@ -73,6 +74,7 @@ import app.silk.wallet.domain.CardBrand
 import app.silk.wallet.domain.CardEffect
 import app.silk.wallet.domain.CardMath
 import app.silk.wallet.domain.CardStylePreset
+import app.silk.wallet.domain.CardStyleSeries
 import app.silk.wallet.ui.fx.LocalFlowClock
 import app.silk.wallet.ui.fx.LocalTilt
 import app.silk.wallet.ui.fx.flowingGradient
@@ -107,6 +109,8 @@ private fun Modifier.cardSurface(card: Card, style: CardStylePreset, back: Boole
                 photo != null -> Modifier.flowingGradient(colors, false, clock, tilt, photo = photo).photoScrim(back)
                 gif != null -> Modifier.gifLayer(gif, clock).photoScrim(back)
                 style.effect == CardEffect.WHALE && texture != null -> Modifier.whaleSurface(texture, clock, tilt, back)
+                style.series == CardStyleSeries.SILICON_MYTHS && texture != null ->
+                    Modifier.mythSurface(texture, style.effect, clock, tilt, back)
                 else -> Modifier.flowingGradient(colors, style.darkText, clock, tilt, style.effect, photo = texture)
             }
         )
@@ -116,13 +120,17 @@ private fun Modifier.cardSurface(card: Card, style: CardStylePreset, back: Boole
 
 /** 皮肤贴图与缩略图分别解码、缓存，选择器滚动时无需加载全尺寸贴图。 */
 private object TextureCache {
-    private val textures = HashMap<Int, ImageBitmap>()
-    private val thumbnails = HashMap<Int, ImageBitmap>()
+    private class BitmapCache(maxBytes: Int) : LruCache<Int, ImageBitmap>(maxBytes) {
+        override fun sizeOf(key: Int, value: ImageBitmap): Int = value.width * value.height * 4
+    }
+
+    private val textures = BitmapCache(36 * 1024 * 1024)
+    private val thumbnails = BitmapCache(4 * 1024 * 1024)
 
     fun get(res: android.content.res.Resources, id: Int, thumbnail: Boolean): ImageBitmap {
         val cache = if (thumbnail) thumbnails else textures
         return synchronized(cache) {
-            cache.getOrPut(id) {
+            cache.get(id) ?: run {
                 val options = BitmapFactory.Options().apply {
                     inScaled = false
                     inSampleSize = if (thumbnail) 4 else 1
@@ -132,7 +140,7 @@ private object TextureCache {
                 val bitmap = if (scale < 1f) {
                     Bitmap.createScaledBitmap(src, (src.width * scale).toInt(), (src.height * scale).toInt(), true)
                 } else src
-                bitmap.asImageBitmap()
+                bitmap.asImageBitmap().also { cache.put(id, it) }
             }
         }
     }

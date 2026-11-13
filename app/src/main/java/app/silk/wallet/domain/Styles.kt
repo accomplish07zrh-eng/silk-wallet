@@ -18,9 +18,15 @@ data class CardStylePreset(
     val effect: Int = CardEffect.NONE,
     /** 贴图底（drawable 资源）：着色器在贴图之上叠光效，用于手绘 / 生成底图的皮肤 */
     val texture: Int? = null,
+    val series: CardStyleSeries? = null,
+    val seriesLabel: String? = null,
 )
 
-/** 卡面特效。深海鲸歌使用分层贴图，其余效果由 FlowShader 绘制。 */
+enum class CardStyleSeries(val label: String) {
+    SILICON_MYTHS("硅基神话"),
+}
+
+/** 卡面特效。硅基神话中的插画使用单独的着色器。 */
 object CardEffect {
     const val NONE = 0
     const val HOLO = 1
@@ -38,9 +44,19 @@ object CardEffect {
     /** 贴图鳞片 + 随倾斜流转的虹彩 + 鳞缘扫光 + 游动的金色光带与星尘 */
     const val DRAGON_SILK = 13
     const val WHALE = 14
+    const val CLAUDE = 15
+    const val GPT = 16
+    const val GEMINI = 17
+    const val GROK = 18
+    const val GLM = 19
+    const val ERNIE = 20
+    const val QWEN = 21
+    const val KIMI = 22
+    const val MINIMAX = 23
 }
 
 object CardStyles {
+    private val myths = CardStyleSeries.SILICON_MYTHS
 
     // 配色原则：同色相内由亮到暗的三段，饱和度收敛，避免荧光感；
     // 高光与质感交给卡面的光泽层，渐变本身只负责“底色”
@@ -77,7 +93,43 @@ object CardStyles {
         CardStylePreset(
             "skin_whale", "深海鲸歌",
             listOf(Color(0xFF317AA6), Color(0xFF18476D), Color(0xFF081936)),
-            effect = CardEffect.WHALE, texture = R.drawable.skin_whale,
+            effect = CardEffect.WHALE, texture = R.drawable.skin_whale, series = myths, seriesLabel = "DeepSeek",
+        ),
+        CardStylePreset(
+            "skin_claude", "Claude", listOf(Color(0xFFA96032), Color(0xFF522A23), Color(0xFF211B20)),
+            effect = CardEffect.CLAUDE, texture = R.drawable.skin_claude, series = myths,
+        ),
+        CardStylePreset(
+            "skin_gpt", "GPT", listOf(Color(0xFF3B7B72), Color(0xFF1D363C), Color(0xFF0E171B)),
+            effect = CardEffect.GPT, texture = R.drawable.skin_gpt, series = myths,
+        ),
+        CardStylePreset(
+            "skin_gemini", "Gemini", listOf(Color(0xFF655CB1), Color(0xFF2B315F), Color(0xFF151936)),
+            effect = CardEffect.GEMINI, texture = R.drawable.skin_gemini, series = myths,
+        ),
+        CardStylePreset(
+            "skin_grok", "Grok", listOf(Color(0xFF973831), Color(0xFF491B24), Color(0xFF1B0E16)),
+            effect = CardEffect.GROK, texture = R.drawable.skin_grok, series = myths,
+        ),
+        CardStylePreset(
+            "skin_glm", "智谱 GLM", listOf(Color(0xFFAF884A), Color(0xFF39416A), Color(0xFF141B36)),
+            effect = CardEffect.GLM, texture = R.drawable.skin_glm, series = myths,
+        ),
+        CardStylePreset(
+            "skin_ernie", "文心一言", listOf(Color(0xFF4F8595), Color(0xFF284759), Color(0xFF132B3B)),
+            effect = CardEffect.ERNIE, texture = R.drawable.skin_ernie, series = myths,
+        ),
+        CardStylePreset(
+            "skin_qwen", "通义千问", listOf(Color(0xFFAE6950), Color(0xFF4B3460), Color(0xFF211A35)),
+            effect = CardEffect.QWEN, texture = R.drawable.skin_qwen, series = myths,
+        ),
+        CardStylePreset(
+            "skin_kimi", "Kimi", listOf(Color(0xFF6F7AB2), Color(0xFF2D365D), Color(0xFF12182F)),
+            effect = CardEffect.KIMI, texture = R.drawable.skin_kimi, series = myths,
+        ),
+        CardStylePreset(
+            "skin_minimax", "MiniMax", listOf(Color(0xFFCE8667), Color(0xFF387581), Color(0xFF183B4D)),
+            effect = CardEffect.MINIMAX, texture = R.drawable.skin_minimax, series = myths,
         ),
         CardStylePreset(
             "skin_neon", "霓虹",
