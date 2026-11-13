@@ -108,12 +108,15 @@ private fun Modifier.animatedMyth(
         }.onFailure { Log.e("Silk", "硅基神话着色器初始化失败", it) }.getOrNull()
     } ?: return stillMyth(original)
     val brush = remember(shader) { ShaderBrush(shader) }
+    val response = remember(shader) { SiliconTilt() }
     return drawBehind {
         if (size.width <= 0f || size.height <= 0f) return@drawBehind
-        val t = tilt.value
-        val phase = ((time?.value ?: 0f) % scene.period) / scene.period * (2f * Math.PI.toFloat())
+        val seconds = time?.value
+        response.update(seconds, tilt.value)
+        val phase = ((seconds ?: 0f) % scene.period) / scene.period * (2f * Math.PI.toFloat())
         shader.setFloatUniform("uSize", size.width, size.height)
-        shader.setFloatUniform("uTilt", t.x, t.y)
+        shader.setFloatUniform("uTilt", response.angle.x, response.angle.y)
+        shader.setFloatUniform("uMomentum", response.momentum.x, response.momentum.y)
         shader.setFloatUniform("uPhase", phase)
         drawRect(brush)
     }

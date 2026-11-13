@@ -27,6 +27,12 @@ float portraitGesture(float phase, float offset) {
     return smoothstep(0.10, 0.36, t) * (1.0 - smoothstep(0.50, 0.85, t));
 }
 
+float portraitFollowThrough(float phase, float offset) {
+    float t = fract(phase / PORTRAIT_TAU + offset);
+    float tail = smoothstep(0.40, 0.51, t) * (1.0 - smoothstep(0.67, 0.90, t));
+    return sin((t - 0.44) * 16.0) * tail;
+}
+
 float portraitBlink(float phase, float offset) {
     float t = fract(phase / PORTRAIT_TAU - offset + 0.5) - 0.5;
     return smoothstep(-0.015, -0.003, t) * (1.0 - smoothstep(0.004, 0.016, t));
@@ -68,77 +74,93 @@ float2 portraitAction(float2 uv, float phase, float2 tilt, int scene) {
     float2 shift;
     float angle;
     float cue = portraitGesture(phase, 0.07);
+    float settle = portraitFollowThrough(phase, 0.07);
     if (scene == 14) {
         // The wrist stays below the shushing finger, outside its own motion mask.
         pivot = float2(0.778, 0.661);
         center = float2(0.758, 0.581);
         radius = float2(0.063, 0.097);
-        angle = 0.072 * cue + 0.036 * tilt.x;
-        shift = float2(-0.002, -0.010) * cue;
+        angle = 0.093 * cue - 0.026 * settle + 0.047 * tilt.x;
+        shift = float2(-0.003, -0.014) * cue + float2(0.002, 0.004) * settle;
     } else if (scene == 15) {
         pivot = float2(0.558, 0.906);
         center = float2(0.453, 0.858);
         radius = float2(0.123, 0.103);
-        angle = -0.093 * cue + 0.037 * tilt.x;
-        shift = float2(0.006, -0.014) * cue;
+        angle = -0.121 * cue + 0.024 * settle + 0.041 * tilt.x;
+        shift = float2(0.009, -0.017) * cue;
     } else if (scene == 16) {
         // The palm rises a little after the pearl. The fingers follow as a group.
         pivot = float2(0.400, 0.654);
         center = float2(0.319, 0.606);
         radius = float2(0.095, 0.084);
         float lift = portraitGesture(phase, 0.93);
-        angle = 0.118 * lift + 0.037 * tilt.x;
-        shift = float2(0.004, -0.014) * lift;
+        angle = 0.151 * lift + 0.035 * portraitFollowThrough(phase, 0.93) + 0.051 * tilt.x;
+        shift = float2(0.007, -0.018) * lift;
     } else if (scene == 17) {
         pivot = float2(0.237, 0.666);
         center = float2(0.293, 0.546);
         radius = float2(0.098, 0.152);
-        angle = 0.11 * cue + 0.042 * tilt.x;
-        shift = float2(0.004, -0.012) * cue;
+        angle = 0.138 * cue + 0.030 * settle + 0.050 * tilt.x;
+        shift = float2(0.004, -0.016) * cue;
     } else if (scene == 18) {
         // Move the goblet and grip about the wrist in one transform.
         pivot = float2(0.538, 0.503);
         center = float2(0.599, 0.451);
         radius = float2(0.119, 0.187);
-        angle = -0.135 * cue + 0.074 * tilt.x;
-        shift = float2(0.006, -0.020) * cue;
+        angle = -0.183 * cue + 0.043 * settle + 0.083 * tilt.x;
+        shift = float2(0.005, -0.026) * cue;
     } else if (scene == 19) {
         // The tall ear banks about its base as the wind reaches it.
         pivot = float2(0.474, 0.176);
         center = float2(0.487, 0.090);
         radius = float2(0.071, 0.162);
-        angle = 0.22 * portraitGesture(phase * 2.0, 0.27) + 0.086 * tilt.x - 0.04;
+        angle = 0.27 * portraitGesture(phase * 2.0, 0.27) - 0.053 * portraitFollowThrough(phase * 2.0, 0.27)
+            + 0.10 * tilt.x - 0.04;
         shift = float2(0.0);
     } else if (scene == 20) {
         pivot = float2(0.400, 0.808);
         center = float2(0.369, 0.784);
         radius = float2(0.078, 0.068);
-        angle = 0.118 * cue + 0.055 * tilt.y;
-        shift = float2(-0.008, -0.010) * cue;
+        angle = 0.145 * cue + 0.055 * tilt.y;
+        shift = float2(-0.010, -0.014) * cue + float2(0.0, 0.004) * settle;
     } else if (scene == 21) {
         // The painted fan is still open, with the roll centered on the holding hand.
         pivot = float2(0.449, 0.504);
         center = float2(0.484, 0.434);
         radius = float2(0.138, 0.174);
-        angle = 0.136 * cue + 0.072 * tilt.x;
-        shift = float2(-0.003, -0.013) * cue;
+        angle = 0.178 * cue + 0.051 * settle + 0.080 * tilt.x;
+        shift = float2(-0.004, -0.017) * cue;
     } else if (scene == 22) {
         pivot = float2(0.647, 0.218);
         center = float2(0.648, 0.292);
         radius = float2(0.052, 0.103);
-        angle = 0.26 * sin(phase * 2.0 - 0.6) + 0.12 * tilt.x;
+        angle = 0.26 * sin(phase * 2.0 - 0.6) + 0.071 * settle + 0.13 * tilt.x;
         shift = float2(0.002, 0.006) * cue;
     } else {
         // The conch stays in the fingers while it tips toward the ear.
         pivot = float2(0.722, 0.482);
         center = float2(0.798, 0.378);
         radius = float2(0.141, 0.168);
-        angle = -0.121 * cue + 0.069 * tilt.x;
-        shift = float2(-0.008, -0.010) * cue;
+        angle = -0.155 * cue + 0.037 * settle + 0.075 * tilt.x;
+        shift = float2(-0.012, -0.014) * cue;
     }
     float amount = portraitFalloff(uv, center, radius, 0.60);
     if (amount <= 0.0) return uv;
-    return uv + amount * portraitTurn(uv, pivot, angle, shift);
+    float2 moved = uv + amount * portraitTurn(uv, pivot, angle, shift);
+    if (scene == 21) {
+        // Flex the silk across the fan ribs, keeping the base and the grip fixed.
+        float2 fan = portraitMetric(moved - float2(0.451, 0.501));
+        float bend = smoothstep(0.053, 0.142, length(fan))
+            * (1.0 - smoothstep(0.174, 0.227, length(fan))) * (1.0 - smoothstep(-0.031, 0.071, fan.y));
+        moved.x += fan.x * bend * (0.067 * cue - 0.042 * settle);
+    }
+    return moved;
+}
+
+float2 portraitGaze(float2 uv, float2 eye, float2 span, float slant, float2 look) {
+    float2 eyeSpace = portraitRotate(portraitMetric(uv - eye), slant) / span;
+    float iris = 1.0 - smoothstep(0.18, 0.69, dot(eyeSpace, eyeSpace));
+    return -look * iris;
 }
 
 float2 portraitFace(float2 uv, float phase, float2 tilt, int scene, float2 center) {
@@ -211,24 +233,33 @@ float2 portraitFace(float2 uv, float phase, float2 tilt, int scene, float2 cente
     }
     float offset = fract(float(scene) * 0.173 + 0.19);
     float blink = max(portraitBlink(phase, offset), portraitBlink(phase, fract(offset + 0.54)) * 0.87);
+    float glance = portraitGesture(phase, scene == 16 ? 0.93 : 0.07);
+    float2 look = float2(tilt.x * 0.0032 + 0.0018 * sin(phase * 2.0 + offset),
+        tilt.y * 0.0024 + 0.0010 * cos(phase + offset));
+    if (scene == 16) look += float2(-0.0040, 0.0038) * glance;
+    if (scene == 19 || scene == 22) look += float2(0.0039, -0.0011) * glance;
+    if (scene == 21) look += float2(-0.0025, -0.0037) * glance;
+    float2 gaze = portraitGaze(uv, firstEye, firstSize, slant, look)
+        + portraitGaze(uv, secondEye, secondSize, slant, look);
     if (scene == 17 || scene == 18) {
         float wink = portraitBlink(phase, scene == 18 ? 0.39 : fract(offset + 0.25));
-        if (max(blink, wink) <= 0.0) return uv;
+        if (max(blink, wink) <= 0.0) return uv + gaze;
         float close = scene == 17 ? 0.64 : 1.0;
         return uv + portraitLids(uv, firstEye, firstSize, slant, blink * close)
-            + portraitLids(uv, secondEye, secondSize, slant, max(blink, wink) * close);
+            + portraitLids(uv, secondEye, secondSize, slant, max(blink, wink) * close)
+            + gaze * (1.0 - max(blink, wink));
     }
-    if (blink <= 0.0) return uv;
+    if (blink <= 0.0) return uv + gaze;
     return uv + portraitLids(uv, firstEye, firstSize, slant, blink)
-        + portraitLids(uv, secondEye, secondSize, slant, blink);
+        + portraitLids(uv, secondEye, secondSize, slant, blink) + gaze * (1.0 - blink);
 }
 
 float2 portraitPose(float2 uv, float phase, float2 tilt, int scene, float2 face) {
     if (abs(uv.x - face.x) > 0.19 || uv.y < face.y - 0.20 || uv.y > face.y + 0.45) return uv;
     float lean = portraitBreath(phase, float(scene) * 0.57);
     float influence = portraitFalloff(uv, face + float2(0.0, 0.035), float2(0.155, 0.226), 0.48);
-    float angle = 0.028 * lean + tilt.x * 0.030;
-    float2 shift = float2(0.006 * lean + tilt.x * 0.005, -0.009 * lean + tilt.y * 0.005);
+    float angle = 0.034 * lean + tilt.x * 0.036;
+    float2 shift = float2(0.0075 * lean + tilt.x * 0.006, -0.010 * lean + tilt.y * 0.006);
     if (scene == 15 || scene == 20) {
         float nod = portraitGesture(phase, scene == 15 ? 0.07 : 0.16);
         shift.y += nod * 0.006;

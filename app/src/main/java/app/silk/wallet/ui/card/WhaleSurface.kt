@@ -76,12 +76,15 @@ private fun Modifier.animatedWhaleSurface(
         }.onFailure { android.util.Log.e("Silk", "硅基神话-DeepSeek 着色器编译失败", it) }.getOrNull()
     } ?: return staticWhaleSurface(original)
     val brush = remember(shader) { ShaderBrush(shader) }
+    val response = remember(shader) { SiliconTilt() }
     return drawBehind {
         if (size.width <= 0f || size.height <= 0f) return@drawBehind
+        val seconds = time?.value
+        response.update(seconds, tilt.value)
         shader.setFloatUniform("uSize", size.width, size.height)
-        shader.setFloatUniform("uTime", time?.value ?: 0f)
-        val angle = tilt.value
-        shader.setFloatUniform("uTilt", angle.x, angle.y)
+        shader.setFloatUniform("uTime", seconds ?: 0f)
+        shader.setFloatUniform("uTilt", response.angle.x, response.angle.y)
+        shader.setFloatUniform("uMomentum", response.momentum.x, response.momentum.y)
         drawRect(brush)
     }
 }

@@ -229,11 +229,12 @@ private fun Modifier.photoScrim(back: Boolean) = drawBehind {
 }
 
 /** Keep the white wordmark legible as bright parts of the illustration pass behind it. */
-private fun Modifier.visaCornerShade() = drawWithCache {
+private fun Modifier.visaCornerShade(effect: Int) = drawWithCache {
     val ink = Color(0xFF08101D)
+    val moonBehindMark = effect == CardEffect.GROK
     val shade = Brush.radialGradient(
-        0f to ink.copy(alpha = 0.54f),
-        0.48f to ink.copy(alpha = 0.42f),
+        0f to ink.copy(alpha = if (moonBehindMark) 0.67f else 0.54f),
+        0.48f to ink.copy(alpha = if (moonBehindMark) 0.59f else 0.42f),
         1f to Color.Transparent,
         center = Offset(size.width - 37.dp.toPx(), 32.dp.toPx()),
         radius = 56.dp.toPx(),
@@ -282,7 +283,7 @@ fun CardFront(
     val brand = CardBrand.of(card.brand)
     val visa = brand == CardBrand.VISA
     val cornerShade = if (visa && style.series == CardStyleSeries.SILICON_MYTHS) {
-        Modifier.visaCornerShade()
+        Modifier.visaCornerShade(style.effect)
     } else Modifier
     Box(
         modifier.cardSurface(card, style, back = false, live = live)

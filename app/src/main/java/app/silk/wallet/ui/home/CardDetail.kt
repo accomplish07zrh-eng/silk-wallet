@@ -72,7 +72,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,6 +86,7 @@ import app.silk.wallet.data.CardMedia
 import app.silk.wallet.data.Settings
 import app.silk.wallet.domain.CardBrand
 import app.silk.wallet.domain.CardMath
+import app.silk.wallet.domain.CardStyleSeries
 import app.silk.wallet.domain.CardStyles
 import app.silk.wallet.ui.card.CardRatio
 import app.silk.wallet.ui.card.CardShape
@@ -96,6 +99,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeChild
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
@@ -186,12 +190,15 @@ fun CardDetail(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // 拖着玩：拖动量同时驱动 3D 倾斜与光泽，松手弹簧回正
-            val drag = remember(card.id) { Animatable(Offset.Zero, Offset.VectorConverter) }
+            val drag = remember(card.id) { mutableStateOf(Offset.Zero) }
+            val settle = remember(card.id) { Animatable(Offset.Zero, Offset.VectorConverter) }
+            var returnJob by remember(card.id) { mutableStateOf<Job?>(null) }
+            val illustrated = style.series == CardStyleSeries.SILICON_MYTHS && !hasImage && settings.motion
+            val dragRange = if (illustrated) with(LocalDensity.current) { 108.dp.toPx() } else 420f
             val device = LocalTilt.current
-            val tilt = if (settings.motion) remember(device, drag) {
+            val tilt = if (settings.motion) remember(device, drag, dragRange) {
                 derivedStateOf {
-                    val combined = device.value + drag.value / 420f
+                    val combined = device.value + drag.value / dragRange
                     Offset(combined.x.coerceIn(-1f, 1f), combined.y.coerceIn(-1f, 1f))
                 }
             } else device
@@ -231,22 +238,58 @@ fun CardDetail(
                         }
                         .graphicsLayer {
                             val d = drag.value
-                            rotationY = (d.x * 0.075f).coerceIn(-22f, 22f)
-                            rotationX = (-d.y * 0.075f).coerceIn(-22f, 22f)
-                            translationX = d.x * 0.28f
-                            translationY = d.y * 0.28f
+                            if (illustrated) {
+                                val pose = d / dragRange
+                                rotationY = 22f * pose.x.coerceIn(-1f, 1f)
+                                rotationX = -19f * pose.y.coerceIn(-1f, 1f)
+                                translationX = d.x * 0.23f
+                                translationY = d.y * 0.23f
+                            } else {
+                                rotationY = (d.x * 0.075f).coerceIn(-22f, 22f)
+                                rotationX = (-d.y * 0.075f).coerceIn(-22f, 22f)
+                                translationX = d.x * 0.28f
+                                translationY = d.y * 0.28f
+                            }
                             cameraDistance = 14f * density
                         }
-                        .pointerInput(card.id) {
+                        .pointerInput(card.id, illustrated, dragRange) {
+                            val velocity = VelocityTracker()
+                            var finger = Offset.Zero
+                            fun release(canceled: Boolean) {
+                                val initialVelocity = if (illustrated && !canceled) {
+                                    val v = velocity.calculateVelocity()
+                                    val limit = dragRange * 2.2f
+                                    Offset(
+                                        (v.x * 0.22f).coerceIn(-limit, limit),
+                                        (v.y * 0.22f).coerceIn(-limit, limit),
+                                    )
+                                } else Offset.Zero
+                                returnJob?.cancel()
+                                returnJob = scope.launch {
+                                    settle.snapTo(drag.value)
+                                    val damping = if (illustrated) 0.57f else 0.42f
+                                    val stiffness = if (illustrated) 225f else 260f
+                                    settle.animateTo(Offset.Zero, spring(damping, stiffness), initialVelocity) {
+                                        drag.value = value
+                                    }
+                                }
+                            }
                             detectDragGestures(
-                                onDragEnd = { scope.launch { drag.animateTo(Offset.Zero, spring(0.42f, 260f)) } },
-                                onDragCancel = { scope.launch { drag.animateTo(Offset.Zero, spring(0.42f, 260f)) } },
+                                onDragStart = {
+                                    returnJob?.cancel()
+                                    velocity.resetTracking()
+                                    finger = Offset.Zero
+                                },
+                                onDragEnd = { release(canceled = false) },
+                                onDragCancel = { release(canceled = true) },
                             ) { change, amount ->
                                 change.consume()
-                                scope.launch {
-                                    val cur = drag.value
-                                    drag.snapTo(cur + amount * (1f / (1f + cur.getDistance() / 600f)))
+                                if (illustrated) {
+                                    finger += amount
+                                    velocity.addPosition(change.uptimeMillis, finger)
                                 }
+                                val current = drag.value
+                                drag.value = current + amount / (1f + current.getDistance() / 600f)
                             }
                         }
                         .fillMaxWidth()

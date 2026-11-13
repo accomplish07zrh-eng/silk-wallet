@@ -1,6 +1,7 @@
 uniform float2 uSize;
 uniform float uTime;
 uniform float2 uTilt;
+uniform float2 uMomentum;
 uniform float2 uArtSize;
 uniform float2 uWhaleSize;
 uniform float2 uMaskSize;
@@ -46,7 +47,7 @@ float whaleScale(float progress) {
 }
 
 float caustics(float2 uv, float phase) {
-    float2 water = uv + uTilt * float2(0.086, 0.045);
+    float2 water = uv + uTilt * float2(0.086, 0.045) + uMomentum * float2(0.025, 0.018);
     float first = sin(water.x * 24.0 + water.y * 13.0 + sin(water.y * 22.0 - phase) * 1.1 + phase * 2.0);
     float second = sin(water.x * 12.0 - water.y * 26.0 + cos(water.x * 19.0 + phase) * 1.4 - phase);
     float seam = first + second * 0.60;
@@ -106,18 +107,23 @@ half4 main(float2 position) {
         float pastStroke = pastPhase * 3.0 - 4.2;
         float pastPitch = 0.12 + 0.085 * cos(pastPhase) - smoothstep(0.50, 0.97, previous) * 0.11;
         float tailHeight = 0.12 - 0.27 * sin(pastStroke) - 0.71 * pastPitch;
-        float wakeY = whaleOrigin(previous).y + (tailHeight + age * 0.21) * whaleScale(previous) * 0.356;
+        float wakeY = whaleOrigin(previous).y + (tailHeight + age * 0.21) * whaleScale(previous) * 0.356
+            + age * uMomentum.y * 0.066;
         float displacement = uv.y - wakeY;
         float fade = smoothstep(0.77, 1.00, currentUV.x) * (1.0 - smoothstep(1.28, 1.82, currentUV.x));
-        float spread = 0.009 + age * 0.054;
-        float beat = 0.26 + 0.74 * pow(0.5 + 0.5 * cos(pastStroke), 3.0);
-        float core = softLine((displacement + spread) / (0.012 + age * 0.027));
+        float spread = 0.012 + age * 0.059;
+        float beat = 0.30 + 0.70 * pow(0.5 + 0.5 * cos(pastStroke), 3.0);
+        float core = softLine((displacement + spread) / (0.015 + age * 0.028));
         float edge = softLine((displacement - spread) / (0.017 + age * 0.024));
         float air = softLine(displacement / (0.033 + age * 0.025));
         float flow = fade * beat * depth * openWater;
         col *= 1.0 - air * flow * 0.16;
-        col += half3(0.092, 0.25, 0.37) * (core * 0.76 + edge * 0.45) * flow;
-        col += half3(0.25, 0.51, 0.64) * core * caustics(uv * 1.12, phase) * flow * 0.27;
+        col += half3(0.092, 0.28, 0.40) * (core * 0.81 + edge * 0.49) * flow;
+        col += half3(0.25, 0.51, 0.64) * core * caustics(uv * 1.12, phase) * flow * 0.35;
+        // Small streaks detach from the widening wake and leave its center behind.
+        float trail = softLine((displacement + spread * 1.55) / (0.015 + age * 0.019));
+        float flecks = softLine(sin(age * 63.0 + displacement * 44.0 - pastPhase * 4.0) * 3.7);
+        col += half3(0.18, 0.43, 0.51) * trail * flecks * flow * smoothstep(0.05, 0.34, age) * 0.37;
     }
 
     // Flow only through the loose locks. Near the shoulders the hair remains anchored.
@@ -129,7 +135,8 @@ half4 main(float2 position) {
         float recoil = sin(phase - uv.y * 5.0);
         float2 current = float2(0.014 * sin(wave) + 0.006 * sin(wave * 2.0 + 0.7) + 0.008 * recoil,
             0.023 * cos(wave) + 0.006 * sin(phase * 3.0 + uv.y * 23.0));
-        float2 hairUV = clamp(gestured + (current + uTilt * float2(0.018, 0.013)) * weight, 0.0, 1.0);
+        float2 drift = uTilt * float2(0.018, 0.013) + uMomentum * float2(0.021, 0.017);
+        float2 hairUV = clamp(gestured + (current + drift) * weight, 0.0, 1.0);
         half3 hair = uOriginal.eval(hairUV * uArtSize).rgb;
         half4 water = uCleanPatch.eval(hairUV * uArtSize);
         float foreground = maskAt(hairUV).r;
@@ -144,7 +151,7 @@ half4 main(float2 position) {
         float2 hinge = float2(0.750, 0.537);
         float2 finger = artwork - hinge;
         float gesture = portraitGesture(phase, 0.07);
-        float angle = 0.122 * sin(phase * 2.0 + 0.3) + 0.052 * gesture + 0.029 * uTilt.x;
+        float angle = 0.122 * sin(phase * 2.0 + 0.3) + 0.061 * gesture + 0.029 * uTilt.x + 0.024 * uMomentum.x;
         float2 fingerUV = hinge + float2(finger.x * cos(angle) - finger.y * sin(angle) * 0.631,
             finger.x * sin(angle) / 0.631 + finger.y * cos(angle));
         float fingerAlpha = maskAt(fingerUV).b;
@@ -152,6 +159,7 @@ half4 main(float2 position) {
     }
 
     // Light breaks at the surface and fans out through the open water.
+    float shafts = 0.0;
     if (openWater > 0.008) {
         float2 source = float2(0.46 + uTilt.x * 0.085, -0.12 + uTilt.y * 0.055);
         float spread = (uv.x - source.x) / (uv.y - source.y + 0.12);
@@ -161,10 +169,20 @@ half4 main(float2 position) {
             + softLine((spread - drift - 0.14) / 0.072) * 0.40;
         float mist = 1.0 - smoothstep(0.05, 0.77, uv.y);
         float surface = 1.0 - smoothstep(0.04, 0.29, uv.y);
-        float horizon = light * mist * (0.68 + 0.32 * cos(phase));
+        float crossing = softLine((spread - drift + 0.18 + 0.22 * sin(phase - 0.5)) / 0.067);
+        float horizon = (light + 0.41 * crossing) * mist * (0.68 + 0.32 * cos(phase));
         float scatter = caustics(uv, phase);
-        col += half3(0.042, 0.148, 0.207) * openWater * (horizon + scatter * surface * 0.72);
+        shafts = horizon;
+        col += half3(0.045, 0.153, 0.214) * openWater * (horizon + scatter * surface * 0.72);
         col += half3(0.076, 0.20, 0.24) * openWater * scatter * horizon * 0.23;
+
+        // Waves crossing at the surface throw a bright, moving fan into the dark water.
+        float crest = 0.09 * cos(phase * 2.0 - uv.y * 4.3) + uMomentum.x * 0.17;
+        float refraction = spread - drift + 0.28 - crest;
+        float fan = softLine(refraction / 0.18) - 0.65 * softLine((refraction - 0.023) / 0.065);
+        float glimmer = softLine((refraction + 0.074) / 0.043) + 0.70 * softLine((refraction - 0.068) / 0.038);
+        float beam = mist * (0.32 + 0.68 * pow(0.5 + 0.5 * cos(phase * 2.0 + uv.y * 4.0), 2.0));
+        col += half3(0.033, 0.134, 0.224) * openWater * beam * (0.70 * fan + glimmer * (0.48 + 0.52 * scatter));
     }
 
     // Bubbles at different depths rise at different speeds and catch the same light.
@@ -174,8 +192,8 @@ half4 main(float2 position) {
             float near = fract(k * 0.618 + 0.39);
             float age = fract(phase / TAU * (i < 4 ? 1.0 : 2.0) + k * 0.371 + 0.16);
             float bx = 0.058 + fract(k * 0.733 + 0.24) * 0.54 + 0.022 * sin(age * TAU + k)
-                + uTilt.x * (0.022 + near * 0.028);
-            float by = 0.93 - age * (0.77 + 0.08 * near) + uTilt.y * 0.014;
+                + uTilt.x * (0.022 + near * 0.028) + uMomentum.x * near * 0.049;
+            float by = 0.93 - age * (0.77 + 0.08 * near) + uTilt.y * 0.014 + uMomentum.y * near * 0.035;
             float2 bubble = metric(uv - float2(bx, by));
             float radius = 0.0026 + near * near * 0.011;
             if (max(abs(bubble.x), abs(bubble.y)) > radius * 1.9) continue;
@@ -187,7 +205,8 @@ half4 main(float2 position) {
             float bounce = softLine(length(bubble - radius * lightSide) / (radius * 0.39));
             float edge = openWater * life(age) * (1.0 - smoothstep(0.63, 0.71, uv.x));
             col *= 1.0 - softLine(r / (radius * 0.76)) * edge * (0.13 + near * 0.13);
-            col += half3(0.38, 0.74, 0.96) * (rim * (0.19 + near * 0.15) + glare * 0.58 + bounce * 0.18) * edge;
+            col += half3(0.38, 0.74, 0.96)
+                * (rim * (0.19 + near * 0.15) + glare * (0.42 + shafts * 0.36) + bounce * 0.18) * edge;
         }
     }
 
@@ -195,8 +214,8 @@ half4 main(float2 position) {
     if (uv.x < 0.62 && uv.y > 0.29 && uv.y < 0.59 && openWater > 0.02) {
         float schoolAge = fract(uTime / 12.0 + 0.86);
         float turnAway = softLine((progress - 0.45) / 0.145) * life(schoolAge);
-        float2 school = float2(0.04 + schoolAge * 0.52, 0.53 - schoolAge * 0.22 + turnAway * 0.055)
-            + uTilt * float2(0.032, 0.025);
+        float2 school = float2(0.04 + schoolAge * 0.52, 0.53 - schoolAge * 0.22 + turnAway * 0.061)
+            + uTilt * float2(0.032, 0.025) + uMomentum * float2(0.021, 0.014);
         float2 d = metric(uv - school);
         if (abs(d.x) < 0.13 && abs(d.y) < 0.069) {
             float strength = life(schoolAge) * openWater * (1.0 - smoothstep(0.55, 0.62, uv.x))
@@ -210,8 +229,8 @@ half4 main(float2 position) {
                 fish.y += fish.x * (0.26 + 0.30 * turning);
                 float flank = softLine(length(fish * float2(0.38, 1.0)) / 0.0028);
                 float tail = softLine((fish.x + 0.008) / 0.0028) * softLine((abs(fish.y) - 0.0021) / 0.0017);
-                float glint = 0.18 + 0.82 * turning * turning;
-                col += half3(0.27, 0.61, 0.78) * (flank * 0.62 + tail * 0.24) * glint * strength;
+                float glint = (0.18 + 0.82 * turning * turning) * (0.69 + 0.48 * shafts);
+                col += half3(0.28, 0.66, 0.83) * (flank * 0.66 + tail * 0.28) * glint * strength;
             }
         }
     }
